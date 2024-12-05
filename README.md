@@ -6,8 +6,8 @@ EasyHOI is a pipeline designed for reconstructing hand-object interactions from 
 
 ---
 ## ✅ TODO
-    - [ ] Integrate the code execution environments into one.
-    - [ ] Complete a one-click demo.
+- [ ] Integrate the code execution environments into one.
+- [ ] Complete a one-click demo.
 ---
 
 ## 📑 Table of Contents
