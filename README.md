@@ -2,13 +2,11 @@
 [![GitHub](https://img.shields.io/github/license/lym29/EasyHOI.svg?style=flat-square&color=df7e66)](./LICENSE)
 [![arXiv](https://img.shields.io/badge/arXiv-2411.14280-gree.svg?style=flat-square)](https://arxiv.org/abs/2411.14280)
 
-![](docs/teaser_gif/clip1.gif)
-![](docs/teaser_gif/clip2.gif)
-![](docs/teaser_gif/clip3.gif)
-![](docs/teaser_gif/clip4.gif)
-![](docs/teaser_gif/clip5.gif)
-
-
+<img src="docs/teaser_gif/clip1.gif" alt="Responsive GIF" style="width:100%; max-width:800px; height:auto;">
+<img src="docs/teaser_gif/clip2.gif" alt="Responsive GIF" style="width:100%; max-width:800px; height:auto;">
+<img src="docs/teaser_gif/clip3.gif" alt="Responsive GIF" style="width:100%; max-width:800px; height:auto;">
+<img src="docs/teaser_gif/clip4.gif" alt="Responsive GIF" style="width:100%; max-width:800px; height:auto;">
+<img src="docs/teaser_gif/clip5.gif" alt="Responsive GIF" style="width:100%; max-width:800px; height:auto;">
 
 EasyHOI is a pipeline designed for reconstructing hand-object interactions from single-view images.
 
