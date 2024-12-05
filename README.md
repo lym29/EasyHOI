@@ -1,5 +1,13 @@
 # EasyHOI: Unleashing the Power of Large Models for Reconstructing Hand-Object Interactions in the Wild
-[![Watch the video](https://img.youtube.com/vi/ruTAuu_ltaE/0.jpg)](https://youtu.be/ruTAuu_ltaE?si=w5TLeiNx9or_sgoj)
+[![GitHub](https://img.shields.io/github/license/lym29/EasyHOI.svg?style=flat-square&color=df7e66)](./LICENSE)
+[![arXiv](https://img.shields.io/badge/arXiv-2411.14280-gree.svg?style=flat-square)](https://arxiv.org/abs/2411.14280)
+
+![](docs/teaser_gif/clip1.gif)
+![](docs/teaser_gif/clip2.gif)
+![](docs/teaser_gif/clip3.gif)
+![](docs/teaser_gif/clip4.gif)
+![](docs/teaser_gif/clip5.gif)
+
 
 
 EasyHOI is a pipeline designed for reconstructing hand-object interactions from single-view images.
