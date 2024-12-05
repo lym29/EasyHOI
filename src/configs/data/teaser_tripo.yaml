@@ -1,0 +1,8 @@
+base_dir: ./data
+input_dir: ${base_dir}/images
+hand_mask_dir: ${base_dir}/obj_recon/hand_mask
+obj_mask_dir: ${base_dir}/obj_recon/obj_mask
+inpaint_dir: ${base_dir}/obj_recon/inpaint_mask
+hand_dir: ${base_dir}/hamer
+obj_dir: ${base_dir}/obj_recon/results/tripo/meshes
+split: test

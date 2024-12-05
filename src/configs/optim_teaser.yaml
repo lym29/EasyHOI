@@ -1,0 +1,8 @@
+defaults:
+  - _self_
+  - experiments: default
+  - data: teaser
+
+log_dir: /storage/data/v-liuym/EasyHOI_results/teaser/log
+out_dir: /storage/data/v-liuym/EasyHOI_results/teaser/
+hand_scale: 10

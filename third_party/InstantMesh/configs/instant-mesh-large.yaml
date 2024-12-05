@@ -1,0 +1,22 @@
+model_config:
+  target: src.models.lrm_mesh.InstantMesh
+  params:
+    encoder_feat_dim: 768
+    encoder_freeze: false
+    encoder_model_name: ckpts/dino-vitb16
+    transformer_dim: 1024
+    transformer_layers: 16
+    transformer_heads: 16
+    triplane_low_res: 32
+    triplane_high_res: 64
+    triplane_dim: 80
+    rendering_samples_per_ray: 128
+    grid_res: 128
+    grid_scale: 2.1
+
+
+infer_config:
+  unet_path: ckpts/instantmesh_cache/models--TencentARC--InstantMesh/snapshots/b785b4ecfb6636ef34a08c748f96f6a5686244d0/diffusion_pytorch_model.bin
+  model_path: ckpts/instantmesh_cache/models--TencentARC--InstantMesh/snapshots/b785b4ecfb6636ef34a08c748f96f6a5686244d0/instant_mesh_large.ckpt
+  texture_resolution: 1024
+  render_resolution: 512
