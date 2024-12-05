@@ -47,7 +47,9 @@ Install pytorch3d follow the [official instruction](https://github.com/facebookr
 
 Install HaMeR and ViTPose:
 ```
-cd third_party/hamer
+cd third_party
+git clone https://github.com/ViTAE-Transformer/ViTPose.git
+cd ./hamer
 pip install -e .[all]
 cd ../ViTPose
 pip install -v -e .
