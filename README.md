@@ -64,6 +64,11 @@ pip install git+'https://github.com/otaheri/MANO'
 pip install git+'https://github.com/lixiny/manotorch'
 ```
 
+Install nvdiffrast:
+```
+pip install git+'https://github.com/NVlabs/nvdiffrast.git'
+```
+
 ### Additional Environments
 Since I haven’t resolved the conflict between the environments yet, it’s necessary to create several virtual environments called afford_diff, lisa, and instantmesh. Please refer to the links below to set up these environments.
 
