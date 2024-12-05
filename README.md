@@ -3,19 +3,19 @@
 [![arXiv](https://img.shields.io/badge/arXiv-2411.14280-gree.svg?style=flat-square)](https://arxiv.org/abs/2411.14280)
 
 <div style="text-align: center;">
-  <img src="docs/teaser_gif/clip1.gif" alt="Description of GIF" style="width:100%; max-width:600px;">
+  <img src="docs/teaser_gif/clip1.gif" alt="Description of GIF" style="width:100%;">
 </div>
 <div style="text-align: center;">
-  <img src="docs/teaser_gif/clip2.gif" alt="Description of GIF" style="width:100%; max-width:600px;">
+  <img src="docs/teaser_gif/clip2.gif" alt="Description of GIF" style="width:100%;">
 </div>
 <div style="text-align: center;">
-  <img src="docs/teaser_gif/clip3.gif" alt="Description of GIF" style="width:100%; max-width:600px;">
+  <img src="docs/teaser_gif/clip3.gif" alt="Description of GIF" style="width:100%;">
 </div>
 <div style="text-align: center;">
-  <img src="docs/teaser_gif/clip4.gif" alt="Description of GIF" style="width:100%; max-width:600px;">
+  <img src="docs/teaser_gif/clip4.gif" alt="Description of GIF" style="width:100%;">
 </div>
 <div style="text-align: center;">
-  <img src="docs/teaser_gif/clip5.gif" alt="Description of GIF" style="width:100%; max-width:600px;">
+  <img src="docs/teaser_gif/clip5.gif" alt="Description of GIF" style="width:100%;">
 </div>
 
 EasyHOI is a pipeline designed for reconstructing hand-object interactions from single-view images.
