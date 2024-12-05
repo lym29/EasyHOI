@@ -249,7 +249,7 @@ def evaluate(cfg, data_cfg):
     
         
 
-@hydra.main(version_base=None, config_path="./configs", config_name="optim_arctic")
+@hydra.main(version_base=None, config_path="./configs", config_name="optim_oakink")
 def main(cfg : DictConfig) -> None:
     config_name = HydraConfig.get().job.config_name
     print(config_name)
