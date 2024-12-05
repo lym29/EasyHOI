@@ -1,0 +1,9 @@
+defaults:
+  - _self_
+  - experiments: default
+  - data: teaser_tripo
+
+log_dir: /storage/data/v-liuym/EasyHOI_results/teaser_tripo/log
+out_dir: /storage/data/v-liuym/EasyHOI_results/teaser_tripo/
+is_tripo: True
+hand_scale: 5

@@ -1,0 +1,17 @@
+MANO:
+  DATA_DIR: third_party/hamer/_DATA/data/
+  MODEL_PATH: ${MANO.DATA_DIR}/mano
+  GENDER: neutral
+  NUM_HAND_JOINTS: 15
+  MEAN_PARAMS: ${MANO.DATA_DIR}/mano_mean_params.npz
+  CREATE_BODY_POSE: FALSE
+
+
+weights:
+  contact: 5
+  penetr: 10
+  loss_2d: 0
+  regularize: 0.1
+
+obj_iteration: 1000
+iteration: 100
