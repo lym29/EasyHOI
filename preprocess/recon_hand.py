@@ -1,17 +1,8 @@
 import sys
 sys.path.append("..")
-import torch
-import matplotlib.pyplot as plt
-import numpy as np
-from PIL import Image
-import open_clip
-from open_clip import tokenizer
 import os
 import os.path as osp
 import subprocess
-import trimesh
-import json
-import pyrender
 import argparse
 sys.path.append('third_party/hamer')
 from hamer.models import MANO

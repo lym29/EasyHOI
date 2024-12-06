@@ -102,9 +102,9 @@ python preprocess/recon_hand.py --data_dir ./data/
 ```
 conda activate lisa
 cd third_party/LISA
-CUDA_VISIBLE_DEVICES=0 python chat_arctic.py --version='xinlai/LISA-13B-llama2-v1-explanatory' --precision='fp16' --seg_hand --skip --load_in_8bit --data_dir ./data/
+CUDA_VISIBLE_DEVICES=0 python chat.py --version='xinlai/LISA-13B-llama2-v1-explanatory' --precision='fp16' --seg_hand --skip --load_in_8bit --data_dir ./data/
 
-CUDA_VISIBLE_DEVICES=0 python chat_arctic.py --version='xinlai/LISA-13B-llama2-v1-explanatory' --precision='fp16' --skip --load_in_8bit --data_dir ./data/
+CUDA_VISIBLE_DEVICES=0 python chat.py --version='xinlai/LISA-13B-llama2-v1-explanatory' --precision='fp16' --skip --load_in_8bit --data_dir ./data/
 ```
 
 #### Step 3: Inpaint
