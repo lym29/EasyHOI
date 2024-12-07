@@ -390,44 +390,44 @@ class HOI_Sync:
         
         c2ws_r_orig, c2ws_t_orig, c2ws_s_orig = geom_utils.matrix_to_axis_angle_t(c2ws)
         
-        for outer_iter in range(10):
-            if outer_iter == -1:
-                c2ws = self.find_c2ws_init(verts, tri, color_obj, projections, resolution, gt_obj_mask)
-                c2ws_r_orig, c2ws_t_orig, c2ws_s_orig = geom_utils.matrix_to_axis_angle_t(c2ws)
-            for i in range(self.cfg['obj_iteration']):
-                projections = projections_origin + projections_residual * projections_mask
-                c2ws_r = c2ws_r_orig + c2ws_residual[:3] * 0.1 # control the step of rot
-                c2ws_t = c2ws_t_orig + c2ws_residual[3:]
-                c2ws = geom_utils.axis_angle_t_to_matrix(c2ws_r, c2ws_t, c2ws_s_orig)
+        
+        c2ws = self.find_c2ws_init(verts, tri, color_obj, projections, resolution, gt_obj_mask)
+        c2ws_r_orig, c2ws_t_orig, c2ws_s_orig = geom_utils.matrix_to_axis_angle_t(c2ws)
+            
+        for i in range(self.cfg['obj_iteration']):
+            projections = projections_origin + projections_residual * projections_mask
+            c2ws_r = c2ws_r_orig + c2ws_residual[:3] * 0.1 # control the step of rot
+            c2ws_t = c2ws_t_orig + c2ws_residual[3:]
+            c2ws = geom_utils.axis_angle_t_to_matrix(c2ws_r, c2ws_t, c2ws_s_orig)
 
-                img = self.renderer(verts, tri, color_obj, projections, c2ws, resolution=resolution)
-                mask_opt = img[..., 1] # green channel
+            img = self.renderer(verts, tri, color_obj, projections, c2ws, resolution=resolution)
+            mask_opt = img[..., 1] # green channel
+            
+            if i==0:
+                mask_init = mask_opt.clone()
                 
-                if i==0 and outer_iter==0:
-                    mask_init = mask_opt.clone()
-                    
-                if not torch.any(mask_opt>0):
-                    return False
+            if not torch.any(mask_opt>0):
+                return False
+            
+            iou_loss = loss_func(mask_opt, gt_obj_mask)
+            
+            if iou_loss > 0.9:
+                sinkhorn_loss = compute_sinkhorn_loss(mask_opt.contiguous(), gt_obj_mask.contiguous())
+                loss =10 * sinkhorn_loss +iou_loss
+            else:
+                sinkhorn_loss = 0
+                loss = iou_loss
                 
-                iou_loss = loss_func(mask_opt, gt_obj_mask)
-                
-                if iou_loss > 0.9:
-                    sinkhorn_loss = compute_sinkhorn_loss(mask_opt.contiguous(), gt_obj_mask.contiguous())
-                    loss =10 * sinkhorn_loss +iou_loss
-                else:
-                    sinkhorn_loss = 0
-                    loss = iou_loss
-                    
-                opt.zero_grad()
-                loss.backward()
-                opt.step()
-                
-                self.log({
-                    "sinkhorn loss": sinkhorn_loss,
-                    "total loss": loss
-                    }, step=i
-                )
-                
+            opt.zero_grad()
+            loss.backward()
+            opt.step()
+            
+            self.log({
+                "sinkhorn loss": sinkhorn_loss,
+                "total loss": loss
+                }, step=i
+            )
+            
             if loss.item() < 0.2:
                 break
         
@@ -443,21 +443,25 @@ class HOI_Sync:
                                    faces=tri.squeeze().cpu().numpy())
         normals = torch.tensor(obj_mesh.vertex_normals).float().to(self.device)
         obj_mask = (self.data["inpaint_mask"] & (~self.data["obj_mask"])).int()
-        obj_pts_front, obj_contact_normals_front, contact_mask_front = compute_contact_afford(n_layer=0,
-                                              mask=obj_mask,
-                                              verts=verts.squeeze(),
-                                              faces=tri.squeeze(),
-                                              normals=normals,
-                                              rast=self.object_rast)
+        obj_pts_front, obj_contact_normals_front, contact_mask_front = compute_contact_afford(
+            n_layer=0,
+            mask=obj_mask,
+            verts=verts.squeeze(),
+            faces=tri.squeeze(),
+            normals=normals,
+            rast=self.object_rast
+        )
         
             
         obj_mask = (self.data["hamer_hand_mask"].bool() & (~self.data["hand_mask"])).int()
-        obj_pts_back, obj_contact_normals_back, contact_mask_back = compute_contact_afford(n_layer=1,
-                                            mask=obj_mask,
-                                            verts=verts.squeeze(),
-                                            faces=tri.squeeze(),
-                                            normals=normals,
-                                            rast=self.object_rast)
+        obj_pts_back, obj_contact_normals_back, contact_mask_back = compute_contact_afford(
+            n_layer=1,
+            mask=obj_mask,
+            verts=verts.squeeze(),
+            faces=tri.squeeze(),
+            normals=normals,
+            rast=self.object_rast
+        )
         
         obj_pts = torch.concat([obj_pts_front, obj_pts_back], dim=0)
         obj_contact_normals = torch.concat([obj_contact_normals_front, obj_contact_normals_back], dim=0)
@@ -595,7 +599,7 @@ class HOI_Sync:
             
         return new_pose.detach()
     
-    def optim_hoi_step(self, pca_params, pca_params_orig, betas, mano_layer=None):
+    def optim_handpose(self, pca_params, pca_params_orig, betas, mano_layer=None):
         if mano_layer is None:
             mano_output: MANOOutput = self.mano_layer(pca_params, betas)
         else:
@@ -654,14 +658,14 @@ class HOI_Sync:
         loss = (loss_3d +loss_2d +reg_loss)
         self.log({
                 "contact": contact_loss, 
-                  "penetr": penetr_loss,
-                  "reg loss": reg_loss,
-                  "2d loss": loss_2d,
-                  "total loss": loss}, step=self.global_step)
+                "penetr": penetr_loss,
+                "reg loss": reg_loss,
+                "2d loss": loss_2d,
+                "total loss": loss}, step=self.global_step)
         fullpose = mano_output.full_poses
         return loss, fullpose.detach(), pred_hand_mask.detach(), pred_obj_mask.detach()
     
-    def optim_handpose_step(self, fullpose, betas, scale=None):
+    def optim_handpose_global(self, fullpose, betas, scale=None):
         mano_output: MANOOutput = self.mano_layer(fullpose, betas)
         if scale is None:
             hand_verts = self.get_hand_verts(mano_output.verts, **self.get_params_for('hand'))
@@ -683,19 +687,6 @@ class HOI_Sync:
         """
         
         gt_hand_mask = self.data["hand_mask"].float()
-        gt_obj_mask = self.data["obj_mask"].float()
-        
-        # obj_verts = self.transform_obj(**self.get_params_for('obj'))
-        # img = self.render_image(hand_verts=hand_verts,
-        #                         hand_faces=self.hand_faces.squeeze(),
-        #                         obj_verts=obj_verts,
-        #                         obj_faces=self.data["object_faces"].squeeze(),
-        #                         resolution=self.data["resolution"])
-        
-        # pred_hand_mask = img[..., 0]
-        
-        # pred_obj_mask = img[..., 1]
-        
         color_hand = torch.FloatTensor([1, 0, 0]).repeat(hand_verts.shape[1], 1)
         color_hand = color_hand.unsqueeze(0).to(hand_verts.device)
         
@@ -712,27 +703,22 @@ class HOI_Sync:
             iou = torch.Tensor([1.0])
         else:
             iou = soft_iou_loss(pred_hand_mask, gt_hand_mask)
-            if iou.item() >= 1:
+            if iou.item() >= 0.9:
                 sinkhorn_loss = compute_sinkhorn_loss(pred_hand_mask.contiguous(), gt_hand_mask.contiguous())
                 loss_2d = sinkhorn_loss
             else:
-                loss_2d = 10 * iou #+ soft_iou_loss(pred_obj_mask, gt_obj_mask)
-                # loss_2d = 100 * (self.L1Loss(pred_hand_mask, gt_hand_mask) 
-                #                  + self.L1Loss(pred_obj_mask, gt_obj_mask))
+                loss_2d = 10 * iou 
         
+        # penetr_loss, contact_loss = compute_h2o_sdf_loss(self.data["object_sdf"], 
+        #                                     hand_verts,
+        #                                     self.hand_contact_zone)
+        # loss_3d = (contact_loss * 10 + penetr_loss)
         
-        penetr_loss, contact_loss = compute_h2o_sdf_loss(self.data["object_sdf"], 
-                                            hand_verts,
-                                            self.hand_contact_zone)
-        loss_3d = (contact_loss * 10 + penetr_loss)
-        
-        loss = loss_2d + loss_3d
+        loss = loss_2d #+ loss_3d
         self.log({"iou": iou,
                   "2d mask loss": loss_2d,
-                  "3d loss": loss_3d
-                 }, step=self.global_step)
-        
-        
+                # "3d loss": loss_3d
+                }, step=self.global_step)
         
         return loss, pred_hand_mask, info, iou.item()
     
@@ -781,18 +767,14 @@ class HOI_Sync:
         
         if global_only:
             scale = scale_orig + scale_res
-            _, init_hand_mask, init_info, iou = self.optim_handpose_step(fullpose, betas) #, scale)
+            _, init_hand_mask, init_info, iou = self.optim_handpose_global(fullpose, betas) #, scale)
         else:
-            _, _, init_hand_mask, _ = self.optim_hoi_step(pca_pose, pca_pose, betas, hand_layer)
-            # _, _, init_hand_mask, _ = self.optim_hoi_step(fullpose, betas)
+            _, _, init_hand_mask, _ = self.optim_handpose(pca_pose, pca_pose, betas, hand_layer)
             
         
         last_loss = 0
         stop_condition = 1e-4
         for outer_iter in range(outer_iteration):
-            # if not global_only:
-            #     self.loss_weights["penetr"] *= 2 
-            
             if global_only and outer_iter < 2:
                 print("run icp")
                 fullpose_new = fullpose.clone()
@@ -808,14 +790,14 @@ class HOI_Sync:
                     fullpose_new[:,:3] += orient_res
                     
                     if iou >= 0.2:
-                        loss, pred_hand_mask, optim_info, iou = self.optim_handpose_step(fullpose_new, betas)
+                        loss, pred_hand_mask, optim_info, iou = self.optim_handpose_global(fullpose_new, betas)
                     else:
                         # only optimize scale, when the mask is aligned well
                         scale = scale_orig + scale_res
-                        loss, pred_hand_mask, optim_info, iou = self.optim_handpose_step(fullpose_new, betas, scale)
+                        loss, pred_hand_mask, optim_info, iou = self.optim_handpose_global(fullpose_new, betas, scale)
                 else:
                     pcapose_new = pca_pose + fullpose_residual * fullpose_mask
-                    loss, fullpose_new, pred_hand_mask, pred_obj_mask = self.optim_hoi_step(pcapose_new, pca_pose, betas, hand_layer)
+                    loss, fullpose_new, pred_hand_mask, pred_obj_mask = self.optim_handpose(pcapose_new, pca_pose, betas, hand_layer)
                                     
                 loss.backward()
                 self.optimizer.step()
