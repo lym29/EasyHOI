@@ -205,6 +205,13 @@ if __name__ == "__main__":
     output_folder = os.path.join(args.data_dir, "obj_recon/results/tripo/meshes/")
     for model in tqdm(os.listdir(input_folder)):
         img_path = os.path.join(input_folder, model, "full.png")
+        if not os.path.exists(img_path):
+            continue
         task_name = model
         save_dir = output_folder
-        run_single_image(img_path, save_dir, task_name, log_dir)
+        
+        try:
+            run_single_image(img_path, save_dir, task_name, log_dir)
+        except Exception as ex:
+            print("An error occurred:")
+            print(ex)
