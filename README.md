@@ -23,7 +23,7 @@ EasyHOI is a pipeline designed for reconstructing hand-object interactions from 
 
 ---
 ## ✅ TODO
-- [ ] Provide the code for utilizing the Tripo3D API to improve reconstruction quality (high priority).
+- [x] Provide the code for utilizing the Tripo3D API to improve reconstruction quality - Completed on 2024-12-24.
 - [ ] Resolve issues in segmentation.
 - [ ] Integrate the code execution environments into one.
 - [ ] Complete a one-click demo.
@@ -124,7 +124,7 @@ python preprocess/seg_image.py --data_dir ./data/
 ```
 
 #### Step 5: Reconstruct obj
-use InstantMesh
+##### Use InstantMesh
 ```
 cd third_party/InstantMesh/
 conda activate instantmesh
@@ -132,6 +132,14 @@ export data_dir=./data/obj_recon/input_for_lrm/
 export out_dir=./data/obj_recon/results/instantmesh
 
 python run_easyhoi.py configs/instant-mesh-large.yaml ${data_dir} --output_path ${out_dir}
+```
+
+##### Use Tripo3D
+
+To use Tripo3D for reconstruction, you need to generate an API key following the instructions in the [Tripo AI Docs](https://platform.tripo3d.ai/docs/quick-start). Then replace the `api_key` in `preprocess/tripo3d_gen.py` with your own key. 
+After updating the API key, execute the following command in your terminal:
+```
+python tripo3d_gen.py --data_dir ./data
 ```
 
 #### Step 6: fix the object mesh, get watertight mesh
