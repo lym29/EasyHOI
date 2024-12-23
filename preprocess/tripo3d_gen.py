@@ -160,6 +160,8 @@ def download_and_unzip(url, extract_to):
         print(f"An unexpected error occurred: {e}")
         
 def run_single_image(img_path, save_dir, task_name, log_dir):
+    if os.path.exists(os.path.join(save_dir, task_name, "tripo")):
+        return
     task_filename = os.path.join(log_dir, f"{task_name}.json")
     log_filename = os.path.join(log_dir, f"{task_name}.log")
     
