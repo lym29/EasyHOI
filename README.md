@@ -1,6 +1,7 @@
 # EasyHOI: Unleashing the Power of Large Models for Reconstructing Hand-Object Interactions in the Wild
 [![GitHub](https://img.shields.io/github/license/lym29/EasyHOI.svg?style=flat-square&color=df7e66)](./LICENSE)
 [![arXiv](https://img.shields.io/badge/arXiv-2411.14280-gree.svg?style=flat-square)](https://arxiv.org/abs/2411.14280)
+[![Project Page](https://img.shields.io/badge/Project%20Page-Visit-blue?style=flat-square)](https://lym29.github.io/EasyHOI-page/)
 
 <div style="text-align: center;">
   <img src="docs/teaser_gif/clip1.gif" alt="Description of GIF" style="width:100%;">
@@ -103,9 +104,9 @@ python preprocess/recon_hand.py --data_dir ./data/
 ```
 conda activate lisa
 cd third_party/LISA
-CUDA_VISIBLE_DEVICES=0 python chat_arctic.py --version='xinlai/LISA-13B-llama2-v1-explanatory' --precision='fp16' --seg_hand --skip --load_in_8bit --data_dir ./data/
+CUDA_VISIBLE_DEVICES=0 python chat.py --version='xinlai/LISA-13B-llama2-v1-explanatory' --precision='fp16' --seg_hand --skip --load_in_8bit --data_dir ./data/
 
-CUDA_VISIBLE_DEVICES=0 python chat_arctic.py --version='xinlai/LISA-13B-llama2-v1-explanatory' --precision='fp16' --skip --load_in_8bit --data_dir ./data/
+CUDA_VISIBLE_DEVICES=0 python chat.py --version='xinlai/LISA-13B-llama2-v1-explanatory' --precision='fp16' --skip --load_in_8bit --data_dir ./data/
 ```
 
 #### Step 3: Inpaint

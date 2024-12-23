@@ -245,7 +245,7 @@ class ImgData(BaseData):
                                 })
         else:
             img_dir = os.path.join(self.data_dir, "images")
-            prompt = "Remove the hand from the object and restore the object to its original appearance. Ensure that no human skin or fingers are visible."
+            prompt = "Remove the hand from the object and restore the object to its original appearance. Remove all the fingers."
             for file in os.listdir(img_dir):
                 if not file.endswith(("png", "jpg")):
                     continue
