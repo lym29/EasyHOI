@@ -139,7 +139,7 @@ python run_easyhoi.py configs/instant-mesh-large.yaml ${data_dir} --output_path 
 To use Tripo3D for reconstruction, you need to generate an API key following the instructions in the [Tripo AI Docs](https://platform.tripo3d.ai/docs/quick-start). Then replace the `api_key` in `preprocess/tripo3d_gen.py` with your own key. 
 After updating the API key, execute the following command in your terminal:
 ```
-python tripo3d_gen.py --data_dir ./data
+python preprocess/tripo3d_gen.py --data_dir ./data
 ```
 
 #### Step 6: fix the object mesh, get watertight mesh
