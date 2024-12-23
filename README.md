@@ -22,6 +22,8 @@ EasyHOI is a pipeline designed for reconstructing hand-object interactions from 
 
 ---
 ## ✅ TODO
+- [ ] Provide the code for utilizing the Tripo3D API to improve reconstruction quality (high priority).
+- [ ] Resolve issues in segmentation.
 - [ ] Integrate the code execution environments into one.
 - [ ] Complete a one-click demo.
 ---
