@@ -84,11 +84,9 @@ device = torch.device('cuda')
 # load diffusion model
 print('Loading diffusion model ... cache dir:', model_cache_dir)
 pipeline = DiffusionPipeline.from_pretrained(
-    os.path.join(model_cache_dir, 'instantmesh_cache/models--sudo-ai--zero123plus-v1.2/snapshots/2da07e89919e1a130c9b5add1584c70c7aa065fd'),
-    local_files_only = True,
+    "sudo-ai/zero123plus-v1.2", 
     custom_pipeline="zero123plus",
     torch_dtype=torch.float16,
-    # cache_dir=os.path.join(model_cache_dir, 'instantmesh_cache/models--sudo-ai--zero123plus-v1.2/snapshots/2da07e89919e1a130c9b5add1584c70c7aa065fd')
 )
 pipeline.scheduler = EulerAncestralDiscreteScheduler.from_config(
     pipeline.scheduler.config, timestep_spacing='trailing'
