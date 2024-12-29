@@ -93,8 +93,8 @@ pipeline.scheduler = EulerAncestralDiscreteScheduler.from_config(
 )
 
 # load custom white-background UNet
-unet_ckpt_path = "./ckpts/instantmesh_cache/models--TencentARC--InstantMesh/snapshots/b785b4ecfb6636ef34a08c748f96f6a5686244d0/diffusion_pytorch_model.bin"
-# unet_ckpt_path = hf_hub_download(repo_id="TencentARC/InstantMesh", filename="diffusion_pytorch_model.bin", repo_type="model", cache_dir=os.path.join(model_cache_dir, 'instantmesh_cache/models--TencentARC--InstantMesh/snapshots/b785b4ecfb6636ef34a08c748f96f6a5686244d0'))
+unet_ckpt_path = hf_hub_download(repo_id="TencentARC/InstantMesh", filename="diffusion_pytorch_model.bin", repo_type="model", cache_dir=model_cache_dir)
+
 state_dict = torch.load(unet_ckpt_path, map_location='cpu')
 pipeline.unet.load_state_dict(state_dict, strict=True)
 
