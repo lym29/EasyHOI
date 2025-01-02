@@ -32,7 +32,7 @@ EasyHOI is a pipeline designed for reconstructing hand-object interactions from 
 ## 📑 Table of Contents
 1. [Installation](#installation)
 2. [Usage](#usage)
-    - [Initial Reconstruction of Hand and Object](#preprocess)
+    - [Initial Reconstruction of Hand and Object](#initial-reconstruction-of-the-hand-and-object)
     - [Prior-guided Optimization](#optimization)
 3. [Acknowledgements](#acknowledgements)
 
@@ -50,7 +50,7 @@ assets/
 ├── mano_backface_ids.pkl
 ```
 
-
+Create the environment for optimization:
 ```
 conda create -n easyhoi python=3.9
 conda activate easyhoi
@@ -71,22 +71,6 @@ cd ../ViTPose
 pip install -v -e .
 ```
 
-Install chamfer_distance:
-```
-pip install git+'https://github.com/otaheri/chamfer_distance'
-```
-
-Install mano:
-```
-pip install git+'https://github.com/otaheri/MANO'
-pip install git+'https://github.com/lixiny/manotorch'
-```
-
-Install nvdiffrast:
-```
-pip install git+'https://github.com/NVlabs/nvdiffrast.git'
-```
-
 ### Additional Environments
 Since I haven’t resolved the conflict between the environments yet, it’s necessary to create several virtual environments called afford_diff, lisa, and instantmesh. Please refer to the links below to set up these environments.
 
@@ -100,15 +84,14 @@ Thanks to the authors of these wonderful projects. I will resolve the environmen
 
 ## 🚀  Usage
 
-### Preprocess
+### Initial Reconstruction of the Hand and Object
 
-"""Initial Reconstruction of Hand and Object"""
-
-Place your images in ./data/images. Alternatively, you can use a different path, but make sure it includes a folder named "images".
+Set the data directory by running the following command:
 
 ```
 export DATA_DIR="./data"
 ```
+Place your images in the $DATA_DIR/images folder. If you prefer a different path, ensure it contains a subfolder named images.
 
 #### Step 1: Hand pose estimation, get hand mask from hamer
 ```
@@ -160,6 +143,8 @@ python preprocess/tripo3d_gen.py --data_dir $DATA_DIR
 conda activate easyhoi
 python preprocess/resample_mesh.py --data_dir $DATA_DIR [--resample]
 ```
+
+---
 
 ### Optimization
 ```

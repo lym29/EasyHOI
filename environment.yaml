@@ -45,3 +45,9 @@ dependencies:
       - hydra-colorlog
       - rootutils
       - mesh-to-sdf
+      - pymeshfix
+      - open3d
+      - git+https://github.com/otaheri/chamfer_distance
+      - git+https://github.com/otaheri/MANO
+      - git+https://github.com/lixiny/manotorch
+      - git+https://github.com/NVlabs/nvdiffrast.git
