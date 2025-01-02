@@ -35,21 +35,6 @@ class HandPoseEstim:
         print(completed_process.stdout)
         if completed_process.stderr:
             print(completed_process.stderr)
-    
-def test_hamer_mow():
-    hpe = HandPoseEstim()
-    # hpe.run()
-    hpe.run(img_dir="/storage/group/4dvlab/datasets/mow/images",
-            out_dir="/storage/group/4dvlab/datasets/mow/hamer",
-            save_mesh=False)
-    
-def test_hamer_wild():
-    hpe = HandPoseEstim()
-    # hpe.run()
-    hpe.run(img_dir="/storage/group/4dvlab/yumeng/EasyHOI/in_the_wild2/images/",
-            out_dir="/storage/group/4dvlab/yumeng/EasyHOI/in_the_wild2/hamer/",
-            save_mesh=False)
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Segementation.")
@@ -57,14 +42,14 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
         
-    data_dir = args.data_dir
+    data_dir = os.path.abspath(args.data_dir)
     print(f"Received data dir: {data_dir}")
     
     hpe = HandPoseEstim()
     hpe.run(
         img_dir=os.path.join(data_dir, "images"),
         out_dir=os.path.join(data_dir, "hamer"),
-        mask_path=os.path.join(data_dir, "obj_recon/hand_mask"),
+        mask_path=os.path.join(data_dir, "obj_recon/hamer_mask"),
         save_mesh=False
     )
     

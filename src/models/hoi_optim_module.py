@@ -227,7 +227,7 @@ class HOI_Sync:
         self.data["hand_mask"] = modified_hand_mask
         
         hand_iou = soft_iou_loss(self.data["hamer_hand_mask"], self.data["hand_mask"])
-        obj_iou = compute_nonzero_distance_2d(self.data["hamer_hand_mask"], 
+        o2h_dist = compute_nonzero_distance_2d(self.data["hamer_hand_mask"], 
                                               self.data["inpaint_mask"])
         
         if self.vis_mid_results:
@@ -241,7 +241,7 @@ class HOI_Sync:
             mask = np.clip(np.rint(mask * 255), 0, 255).astype(np.uint8) # Quantize to np.uint8
             Image.fromarray(mask).save(osp.join(self.cfg.out_dir, f"midresult/test_hand_cam/{name}_seg.png"))
             
-        return hand_iou.item(), obj_iou.item()
+        return hand_iou.item(), o2h_dist.item()
             
         
         

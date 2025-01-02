@@ -317,16 +317,6 @@ def main(cfg : DictConfig) -> None:
             img_id_list.append(img_id)
             hamer_info_list.append(info)
     
-    
-    # img_id_list = ["1", "2", "3", "4", "5", "6", "8"]
-    # img_id_list = ["0", "1", "2", "3", "4"]
-    # img_id_list = ["priscilla-du-preez-YtUMg1gw_pI-unsplash","recha-oktaviani-5tYUk7sZzqc-unsplash"]
-    # img_id_list = [i for i in range(30)] + [i for i in range(30, 1000, 10)]
-    # img_id_list = ["230", "310", "330", "160"]
-    # img_id_list = ["39", "111", "587", "360"]
-    # img_id_list = ["hand_image-21", "hand_image-6", "hand_image-16"]
-    # img_id_list = ["2"]
-    
     for i in trange(len(img_id_list)):
         img_fn = img_id_list[i]
         file = img_fn + ".png"
@@ -342,19 +332,19 @@ def main(cfg : DictConfig) -> None:
         hoi_sync = HOI_Sync(cfg=exp_cfg, progress_bar=progress_bar)
         
         """ Find the best match hand """
-        min_iou = 1000
+        min_iou = float('inf')
         for item in hand_infos:
             data_item = load_data_single(data_cfg, file, item["id"], is_tripo)
             if data_item is None:
                 print("data_item is None")
                 break
             hoi_sync.get_data(data_item)
-            hand_iou, obj_iou = hoi_sync.get_hamer_hand_mask()
-            print(item["id"], hand_iou, obj_iou)
-            if hand_iou is None or obj_iou is None:
+            hand_iou, o2h_dist = hoi_sync.get_hamer_hand_mask()
+            print(item["id"], "hand iou: ", hand_iou, "o2h_dist: ", o2h_dist)
+            if hand_iou is None or o2h_dist is None:
                 iou = None
             else:
-                iou = hand_iou + obj_iou
+                iou = hand_iou + o2h_dist
                 
             if iou is not None and iou < min_iou:
                 min_iou = iou

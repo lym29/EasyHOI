@@ -222,9 +222,6 @@ def seg_after_inpaint(data_dir, save_dir):
         img = data['image'] # original image
         orig_W, orig_H = img.size
         
-        # if image_id != "29":
-        #     continue
-        
         if not os.path.exists(inpainted_dir.format(image_id)):
             continue
         if not os.path.exists(obj_mask_dir.format(image_id)):
@@ -236,7 +233,6 @@ def seg_after_inpaint(data_dir, save_dir):
         x, y, w, h = hoi_box
 
         inpainted_img = cv2.cvtColor(cv2.imread(inpainted_dir.format(image_id)), cv2.COLOR_BGR2RGB)
-        # inpainted_img = cv2.resize(inpainted_img, (w, h), interpolation=cv2.INTER_LINEAR)
         denoised_img = cv2.cvtColor(cv2.imread(denoised_dir.format(image_id)), cv2.COLOR_BGR2RGB)
         
         

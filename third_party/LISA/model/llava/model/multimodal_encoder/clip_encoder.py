@@ -16,21 +16,12 @@ class CLIPVisionTower(nn.Module):
         if not delay_load:
             self.load_model()
         else:
-            self.cfg_only = CLIPVisionConfig.from_pretrained(
-                # self.vision_tower_name, 
-                "/public/home/v-liuym/.cache/huggingface/hub/models--openai--clip-vit-large-patch14",
-                local_files_only=True)
+            self.cfg_only = CLIPVisionConfig.from_pretrained(self.vision_tower_name)
 
     def load_model(self):
-        self.image_processor = CLIPImageProcessor.from_pretrained(
-            # self.vision_tower_name, 
-            "/public/home/v-liuym/.cache/huggingface/hub/models--openai--clip-vit-large-patch14",
-            local_files_only=True
-        )
+        self.image_processor = CLIPImageProcessor.from_pretrained(self.vision_tower_name)
         self.vision_tower = CLIPVisionModel.from_pretrained(
-            # self.vision_tower_name, 
-            "/public/home/v-liuym/.cache/huggingface/hub/models--openai--clip-vit-large-patch14",
-            local_files_only=True,
+            self.vision_tower_name, 
             low_cpu_mem_usage=True
         )
         self.vision_tower.requires_grad_(False)
