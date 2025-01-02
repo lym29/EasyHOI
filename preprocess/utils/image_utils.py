@@ -1,5 +1,6 @@
 import numpy as np
 import cv2
+from scipy.spatial import Voronoi, voronoi_plot_2d
 
 def clean_mask(mask):
     # remove outliers or isolation points on the mask
@@ -93,6 +94,47 @@ def uniform_sample_points_on_mask(mask, contour, init_sample=1, max_attempts=10)
 
     return points
 
+def voronoi_sampling_with_centroid(mask, contour, num_points=10, iteration=5):
+    H, W = mask.shape
+    sub_mask = np.zeros((H, W), dtype=np.uint8)
+    sub_mask = cv2.fillPoly(sub_mask, [contour], color=255)
+    valid_positions = np.column_stack(np.where(sub_mask > 0))
+    # randomly sample initial points 
+    if len(valid_positions) < 3 * num_points:
+        initial_points = valid_positions
+    else:
+        initial_points_idx = np.random.choice(len(valid_positions), 10 * num_points, replace=False)
+        initial_points = valid_positions[initial_points_idx]
+
+    # construct Voronoi diagram
+    vor = Voronoi(initial_points[:, [1, 0]]) #[y,x] -> [x,y]
+    
+    for _ in range(iteration):
+        # compute the center of each Voronoi polygon
+        pts_list = []
+        for region_idx in vor.regions:
+            if not region_idx or -1 in region_idx:
+                continue
+            poly_verts = vor.vertices[region_idx]
+            poly_verts = np.round(poly_verts).astype(np.int32)
+            for i in range(poly_verts.shape[0]):
+                poly_verts[i, 0] = min(max(0, poly_verts[i, 0]), W)
+                poly_verts[i, 1] = min(max(0, poly_verts[i, 1]), H)
+            cx, cy = calculate_polygon_centroid(poly_verts)
+            pts_list.append(np.array([cx, cy])) 
+        
+        if len(pts_list) < num_points:
+            break
+        vor = Voronoi(np.stack(pts_list, axis=0))
+
+    result = [p for p in pts_list if mask[p[1], p[0]] > 0]
+    return result
+
+def calculate_polygon_centroid(vertices):
+    cx = np.mean(vertices[:, 0])
+    cy = np.mean(vertices[:, 1])
+    return int(cx), int(cy)
+
 def box_contain_pt(box, pt):
     x, y, w, h = box
     if pt[0] < x or pt[1] < y or pt[0] > x+w or pt[1] > y+h:
@@ -133,20 +175,14 @@ def extend_box(box, ratio=0.5):
     
 
 def draw_masked_image_with_labels(img, mask, box, points, alpha=0.6, thickness=2):
-    # 将掩码应用到图像上
     mask = np.where(mask, 255, 0).astype(np.uint8)
-
-    # 创建一个彩色版本的掩码供叠加使用
     mask_colored = cv2.merge([mask, mask, mask])
-    # 生成带有 alpha 值的掩码图像
     masked_img = cv2.addWeighted(img, 1 - alpha, mask_colored, alpha, 0)
-    
-    # 绘制边界框
+
     x, y, w, h = box
     cv2.rectangle(masked_img, (x, y), (x + w, y + h), (255, 0, 0), 2)
     cv2.putText(masked_img, 'Box', (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), thickness)
-    
-    # 绘制和标记点
+
     for idx, point in enumerate(points):
         cv2.circle(masked_img, point, thickness*2, (0, 255, 0), -1)
         cv2.putText(masked_img, f'P{idx}', (point[0] + 5, point[1] - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), thickness)
@@ -194,21 +230,22 @@ def mask_to_sam_prompt(obj_mask, hand_mask, threshold=20):
     for contour in contour_list:
         x, y, w, h = cv2.boundingRect(contour)
         center = np.array([x+w//2, y+h//2])
-        # if w * h < threshold:
-        #     continue
+        if w * h < threshold:
+            continue
         # nearest_point = find_point_on_mask(obj_mask, center)
         # sampled_point_list = uniform_sample_points_on_mask(obj_mask, contour)
-        sampled_point_list = sample_points_inside_contour(obj_mask, contour)
+        # sampled_point_list = sample_points_inside_contour(obj_mask, contour)
+        sampled_point_list = voronoi_sampling_with_centroid(obj_mask, contour, num_points=10)
+        # print(sampled_point_list)
         point_list += sampled_point_list
         
         box_list.append(np.array([x,y,w,h]))
-        # if box_contain_pt(box=(x,y,w,h), pt=sampled_point):
-        #     point_list.append(sampled_point)
+        
     
     if len(box_list) == 0:
         return None, None, edges_dilated
     box = union_boxes(box_list)  
-    box = extend_box(box)  
+    box = extend_box(box, ratio=0.8)  
     box = intersect_boxes([box, np.array([0,0,W-1,H-1])])
     assert box is not None
 
@@ -222,18 +259,11 @@ def fill_mask(mask):
     kernel = np.ones((3, 3), np.uint8)
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
 
-    # 方法2: 使用洪水填充法填充孔洞
-    # 需要确保掩码边缘是封闭的，否则需要先进行形态学操作
     flood_mask = mask.copy()
     h, w = flood_mask.shape[:2]
     flood_fill_mask = np.zeros((h+2, w+2), np.uint8)
 
-    # 进行洪水填充
     cv2.floodFill(flood_mask, flood_fill_mask, (0, 0), 255)
-
-    # 反转洪水填充结果
     flood_fill_inv = cv2.bitwise_not(flood_mask)
-
-    # 将原始掩码和反转的洪水填充结果合并
     filled_mask = mask | flood_fill_inv
     return filled_mask

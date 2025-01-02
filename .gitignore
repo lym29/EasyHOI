@@ -170,3 +170,5 @@ src/simulation/data
 
 third_party/LISA/*/*.jpg
 third_party/LISA/*/*.png
+data/*/*
+preprocess/pretrained

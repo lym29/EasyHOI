@@ -24,7 +24,7 @@ EasyHOI is a pipeline designed for reconstructing hand-object interactions from 
 ---
 ## ✅ TODO
 - [x] Provide the code for utilizing the Tripo3D API to improve reconstruction quality - Completed on 2024-12-24.
-- [ ] Resolve issues in segmentation.
+- [x] Resolve issues in segmentation. - Completed on 2025-01-02
 - [ ] Integrate the code execution environments into one.
 - [ ] Complete a one-click demo.
 ---
@@ -37,6 +37,19 @@ EasyHOI is a pipeline designed for reconstructing hand-object interactions from 
 3. [Acknowledgements](#acknowledgements)
 
 ## 🛠️ Installation
+Download MANO models from the [official website](https://mano.is.tue.mpg.de/) and place the mano folder inside the ./assets directory. After setting up, the directory structure should look like this:
+```
+assets/
+├── anchor/
+├── mano/
+│ ├──models/
+│ ├──webuser/
+│ ├──__init__.py
+│ ├──__LICENSE.txt
+├── contact_zones.pkl
+├── mano_backface_ids.pkl
+```
+
 
 ```
 conda create -n easyhoi python=3.9
@@ -93,26 +106,29 @@ Thanks to the authors of these wonderful projects. I will resolve the environmen
 
 Place your images in ./data/images. Alternatively, you can use a different path, but make sure it includes a folder named "images".
 
+```
+export DATA_DIR="./data"
+```
+
 #### Step 1: Hand pose estimation, get hand mask from hamer
 ```
 conda activate easyhoi
-python preprocess/recon_hand.py --data_dir ./data/
+python preprocess/recon_hand.py --data_dir $DATA_DIR
 
 ```
 
 #### Step 2: Segment hand mask and object mask from image before inpainting
 ```
+export TRANSFORMERS_CACHE="/public/home/v-liuym/.cache/huggingface/hub"
 conda activate lisa
-cd third_party/LISA
-CUDA_VISIBLE_DEVICES=0 python chat.py --version='xinlai/LISA-13B-llama2-v1-explanatory' --precision='fp16' --seg_hand --skip --load_in_8bit --data_dir ./data/
-
-CUDA_VISIBLE_DEVICES=0 python chat.py --version='xinlai/LISA-13B-llama2-v1-explanatory' --precision='fp16' --skip --load_in_8bit --data_dir ./data/
+CUDA_VISIBLE_DEVICES=0 python preprocess/lisa_ho_detect.py --seg_hand --skip --load_in_8bit --data_dir $DATA_DIR
+CUDA_VISIBLE_DEVICES=0 python preprocess/lisa_ho_detect.py --skip --load_in_8bit --data_dir $DATA_DIR
 ```
 
 #### Step 3: Inpaint
 ```
 conda activate afford_diff
-python preprocess/inpaint.py --data_dir ./data/ --save_dir ./data/obj_recon/ --img_folder images --inpaint --skip
+python preprocess/inpaint.py --data_dir $DATA_DIR --save_dir $DATA_DIR/obj_recon/ --img_folder images --inpaint --skip
 ```
 
 
@@ -120,18 +136,15 @@ python preprocess/inpaint.py --data_dir ./data/ --save_dir ./data/obj_recon/ --i
 
 ```
 conda activate easyhoi
-python preprocess/seg_image.py --data_dir ./data/
+python preprocess/seg_image.py --data_dir $DATA_DIR
 ```
 
 #### Step 5: Reconstruct obj
 ##### Use InstantMesh
 ```
-cd third_party/InstantMesh/
 conda activate instantmesh
-export data_dir=./data/obj_recon/input_for_lrm/
-export out_dir=./data/obj_recon/results/instantmesh
-
-python run_easyhoi.py configs/instant-mesh-large.yaml ${data_dir} --output_path ${out_dir}
+export HUGGINGFACE_HUB_CACHE="/public/home/v-liuym/.cache/huggingface/hub"
+python preprocess/instantmesh_gen.py preprocess/configs/instant-mesh-large.yaml $DATA_DIR
 ```
 
 ##### Use Tripo3D
@@ -139,13 +152,13 @@ python run_easyhoi.py configs/instant-mesh-large.yaml ${data_dir} --output_path 
 To use Tripo3D for reconstruction, you need to generate an API key following the instructions in the [Tripo AI Docs](https://platform.tripo3d.ai/docs/quick-start). Then replace the `api_key` in `preprocess/tripo3d_gen.py` with your own key. 
 After updating the API key, execute the following command in your terminal:
 ```
-python preprocess/tripo3d_gen.py --data_dir ./data
+python preprocess/tripo3d_gen.py --data_dir $DATA_DIR
 ```
 
 #### Step 6: fix the object mesh, get watertight mesh
 ```
 conda activate easyhoi
-python preprocess/resample_mesh.py --data_dir ./data [--resample]
+python preprocess/resample_mesh.py --data_dir $DATA_DIR [--resample]
 ```
 
 ### Optimization
