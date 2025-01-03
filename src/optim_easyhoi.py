@@ -200,7 +200,6 @@ def load_data_single(cfg: DictConfig, file, hand_id, is_tripo = False):
         obj_cam = get_obj_cam(device, origin_w, origin_h)
         
     obj_verts = torch.tensor(obj_mesh.vertices).float().cuda()
-    obj_verts_backup = torch.tensor(obj_mesh.vertices).float().cuda()
     obj_faces = obj_mesh.faces
     if not is_tripo:
         # mirror reflection w.r.t. xy plane
@@ -274,21 +273,13 @@ def load_data_single(cfg: DictConfig, file, hand_id, is_tripo = False):
 
 @hydra.main(version_base=None, config_path="./configs", config_name="optim_notip_arctic")
 def main(cfg : DictConfig) -> None:
-    # include_list = ["0", "2"]
-    # include_list = ["jakub-zerdzicki-Y1YJm1iibTg-unsplash"]
-    include_list = ["601715679424_", "591715679424_", "581715679423_", "541715679420_",
-                    "521715679419_", "491715679416_", "461715679415_", "441715679413_",
-                    "431715679413_"]
-    
     exp_cfg = OmegaConf.create(cfg['experiments'])
     data_cfg = OmegaConf.create(cfg['data']) 
-    # print(cfg)   
     if "is_tripo" in cfg:
         is_tripo = True
     else:
         is_tripo = False
         
-    # print(cfg['out_dir'])
     os.makedirs(cfg['out_dir'], exist_ok=True)
     
     exp_cfg['out_dir'] = cfg['out_dir']
@@ -378,12 +369,12 @@ def main(cfg : DictConfig) -> None:
         hoi_sync.export_for_eval(prefix="init")
         
         print("run_handpose, global")
-        hoi_sync.run_handpose()
+        hoi_sync.run_handpose_global()
         hoi_sync.export(prefix="after_global")
         hoi_sync.export_for_eval(prefix="after_global")
         
         print("run_handpose, not global")
-        hoi_sync.run_handpose(global_only=False)
+        hoi_sync.run_handpose_refine()
         hoi_sync.export(prefix="after")
         hoi_sync.export_for_retarget()
         hoi_sync.export_for_eval(prefix="final")

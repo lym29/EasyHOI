@@ -38,7 +38,7 @@ def find_closest_points_torch(source_points, target_points):
 
 def find_closest_points_with_normals(source_points, target_points, 
                                      source_normals, target_normals, 
-                                     alpha=0.8, normal_threshold=0.8):
+                                     alpha=0.8, normal_threshold=0.1):
     """
     Finds closest point correspondences considering normals and removes source points with negative dot product.
 
@@ -151,7 +151,7 @@ def icp_with_scale(src_points, src_norm,
         if mean_error < tolerance:
             break
 
-    return R, t, scale, transformed_source_points
+    return R, t, scale, transformed_source_points, mean_error
 
 def statistical_outlier_removal(points, k=20, z_score_threshold=0.5):
     """
@@ -298,8 +298,8 @@ def remove_mask_elements_by_depth(mask, depth_map):
 
     return mask
 
-def compute_contact_afford(
-    n_layer,
+def compute_obj_contact(
+    side,
     mask:torch.Tensor, #['H', 'W'] mask for obj and hand contact
     verts:torch.Tensor, # [num_vertices, 3]
     faces:torch.Tensor, # [num_faces, 3]
@@ -314,12 +314,40 @@ def compute_contact_afford(
     # Field triangle_id is the triangle index, offset by one. 
     # Pixels where no triangle was rasterized will receive a zero in all channels.
     # tri_id = rast[..., 3] - 1 
-    u = rast[n_layer, ..., 0]
-    v = rast[n_layer, ..., 1]
-    depth = rast[n_layer, ..., 2]
     
-    tri = rast[n_layer, ..., 3] - 1 #['H', 'W']
-    contact_mask = ((mask>0) & (tri != -1))
+    if side == 'obj_front':
+        n_layer = 0
+        u = rast[n_layer, ..., 0]
+        v = rast[n_layer, ..., 1]
+        depth = rast[n_layer, ..., 2]
+        
+        tri = rast[n_layer, ..., 3] - 1 #['H', 'W']
+        contact_mask = ((mask>0) & (tri != -1))
+    elif side == 'obj_back':
+        multi_tri = rast[:, ..., 3] - 1 #[N, H, W]
+        
+        # Create a boolean mask indicating where the values are not equal to -1,
+        # that is the ray hit the surface
+        multi_mask = (multi_tri != -1)
+        # Reverse the first dimension (N) to find the last non-(-1) value
+        # argmax returns the first occurrence of the maximum value (True) in this case
+        # like: [True, True, True, False] ->[False, True, True, True]->argmin->1
+        # the reversed_idx is 1 -> farthest layer should be 2
+        reversed_indices = multi_mask.flip(dims=(0,)).float().argmax(dim=0)  
+        exists = mask.any(dim=0)  # 检查每个 [h, w] 是否存在不为 -1 的值
+        N = rast.shape[0]
+        farthest_layer = torch.where(exists, N - 1 - reversed_indices, -1) #[h,w]
+        
+        valid_mask = (farthest_layer != -1) #[h,w]
+        farthest_layer = farthest_layer.unsqueeze(0) #[1, H, W]
+        farthest_layer = farthest_layer.clamp(min=0)  # Clamp invalid indices (-1) to 0
+        u = torch.gather(rast[..., 0], 0, farthest_layer)  # Shape: [1, H, W]
+        v = torch.gather(rast[..., 1], 0, farthest_layer)  # Shape: [1, H, W]  
+        tri=torch.gather(rast[..., 3], 0, farthest_layer) - 1 # Shape: [1, H, W] 
+        
+        contact_mask = ((mask>0) & valid_mask)
+        u, v, tri = u[0], v[0], tri[0] # Shape: [H, W]
+    
     # if n_layer != 0:
     #     contact_mask = remove_mask_elements_by_depth(contact_mask.cpu().numpy(), depth.cpu().numpy())
     #     contact_mask = torch.tensor(contact_mask)
@@ -339,6 +367,64 @@ def compute_contact_afford(
     
     u = u[p_id[:, 0], p_id[:, 1]][:,None]
     v = v[p_id[:, 0], p_id[:, 1]][:,None]
+    
+    pts = u * verts[verts_id[:,0]] + v*verts[verts_id[:,1]] + (1-u-v)*verts[verts_id[:,2]]
+    contact_normals = u * normals[verts_id[:,0]] + v*normals[verts_id[:,1]] + (1-u-v)*normals[verts_id[:,2]]
+    
+    random_indices = torch.randperm(pts.shape[0])[:num_sample]
+    pts = pts[random_indices]
+    contact_normals = contact_normals[random_indices]
+    
+    return pts, contact_normals, contact_mask #,verts_id
+
+
+def compute_hand_contact(
+    side,
+    mask:torch.Tensor, #['H', 'W'] mask for obj and hand contact
+    verts:torch.Tensor, # [num_vertices, 3]
+    faces:torch.Tensor, # [num_faces, 3]
+    normals:torch.Tensor, # [num_vertices, 3]
+    rast:torch.Tensor, #['N', 'H', 'W', 4]
+    skipped_face_ids: list,
+    num_sample = 1000
+):
+    # <---------- find hand contact id ------------>
+    # rasterizer output in order (u, v, z/w, triangle_id)
+    # Field triangle_id is the triangle index, offset by one. 
+    # Pixels where no triangle was rasterized will receive a zero in all channels.
+    # tri_id = rast[..., 3] - 1 
+    N, H, W, _ = rast.shape
+    multi_tri = rast[:, ..., 3] - 1 #[N, H, W]
+    multi_u = rast[:, ..., 0]
+    multi_v = rast[:, ..., 1]
+    
+    skipped_face_ids = torch.tensor(skipped_face_ids).to(multi_tri)
+    exclude_mask = torch.isin(multi_tri, skipped_face_ids) # Mask: True for faces to exclude
+    multi_tri[exclude_mask] = -1 # Set skipped faces to -1
+    valid_mask = (multi_tri != -1)
+    exists = valid_mask.any(dim=0)  # True if any valid triangle exists at [h, w]
+    
+    if side == 'hand_front':
+        first_valid_index = valid_mask.float().argmax(dim=0)
+        valid_index = torch.where(exists, first_valid_index, -1)  # Set invalid positions to -1
+    elif side == 'hand_back':
+        reversed_valid_mask = valid_mask.flip(dims=(0,))
+        last_index_reversed = reversed_valid_mask.float().argmax(dim=0)  # Shape: [H, W]
+        last_valid_index = N - 1 - last_index_reversed  # Convert reversed indices to original indices
+        valid_index = torch.where(exists, last_valid_index, -1)  # Set invalid positions to -1
+        
+    contact_mask = (valid_index != -1)
+    p_id = torch.nonzero(contact_mask) # contact pixel id
+    tri_id = multi_tri[valid_index[contact_mask],p_id[:, 0], p_id[:, 1]] 
+    verts_id = faces[tri_id.cpu().long()] # [num_tri, 3]
+    verts_id = verts_id.cpu().long()
+    # verts_id = torch.unique(verts_id).cpu().long()
+    
+    u = multi_u[valid_index[contact_mask],p_id[:, 0], p_id[:, 1]]
+    v = multi_v[valid_index[contact_mask],p_id[:, 0], p_id[:, 1]]
+    
+    u = u[:,None]
+    v = v[:,None]
     
     pts = u * verts[verts_id[:,0]] + v*verts[verts_id[:,1]] + (1-u-v)*verts[verts_id[:,2]]
     contact_normals = u * normals[verts_id[:,0]] + v*normals[verts_id[:,1]] + (1-u-v)*normals[verts_id[:,2]]
