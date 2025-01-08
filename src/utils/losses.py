@@ -5,6 +5,7 @@ import numpy as np
 from torch.nn import Module
 import torch.nn.functional as F
 from sklearn.neighbors import NearestNeighbors
+from sklearn.cluster import KMeans
 
 
 from src.utils.utils import _assert_no_grad
@@ -90,7 +91,7 @@ def icp_with_scale(src_points, src_norm,
                    fix_scale=False,
                    fix_R=False,
                    fix_t=False,
-                   max_iterations=100, tolerance=1e-4, device='cpu'):
+                   max_iterations=200, tolerance=1e-4, device='cpu'):
     """
     Performs ICP alignment with scale estimation using PyTorch.
 
@@ -280,10 +281,10 @@ def compute_penetr_loss(
     return penetr_loss
 
 def remove_mask_elements_by_depth(mask, depth_map):
-    """Removes mask elements with larger depth values based on histogram analysis."""
+    """find the cluster with larger depth values"""
     min_d = depth_map[depth_map>0].min()
     max_d = depth_map[depth_map>0].max()
-    histogram, bin_edges = np.histogram(depth_map.flatten(), range=(min_d, max_d), bins=128) # Only use mask True value to calculate histogram
+    histogram, bin_edges = np.histogram(depth_map.flatten(), range=(min_d, max_d), bins=10) # Only use mask True value to calculate histogram
     bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
 
     # Find prominent peaks in the histogram (you can adjust parameters)
@@ -297,6 +298,24 @@ def remove_mask_elements_by_depth(mask, depth_map):
         mask[depth_map > depth_threshold] = False
 
     return mask
+
+def filter_by_depth_kmeans(mask, depth_map, side, n_clusters=3):
+    masked_depth = depth_map[mask > 0].reshape(-1, 1)  # Only consider depth values within the mask region
+    kmeans = KMeans(n_clusters=n_clusters, random_state=42)
+    labels = kmeans.fit_predict(masked_depth)
+    
+    cluster_centers = kmeans.cluster_centers_  # Get the depth values for each cluster center
+    if side == 'back':
+        best_cluster = np.argmax(cluster_centers)  # Find the cluster with the largest center depth
+    else:
+        best_cluster = np.argmin(cluster_centers)  # Find the cluster with the nearest center depth
+        
+    # Keep only the pixels belonging to the best cluster
+    original_mask_indices = np.where(mask > 0)
+    best_cluster_mask = np.zeros_like(mask, dtype=np.uint8)
+    best_cluster_mask[original_mask_indices] = (labels == best_cluster).astype(np.uint8)
+
+    return best_cluster_mask
 
 def compute_obj_contact(
     side,
@@ -317,40 +336,21 @@ def compute_obj_contact(
     
     if side == 'obj_front':
         n_layer = 0
-        u = rast[n_layer, ..., 0]
-        v = rast[n_layer, ..., 1]
-        depth = rast[n_layer, ..., 2]
-        
-        tri = rast[n_layer, ..., 3] - 1 #['H', 'W']
-        contact_mask = ((mask>0) & (tri != -1))
-    elif side == 'obj_back':
-        multi_tri = rast[:, ..., 3] - 1 #[N, H, W]
-        
-        # Create a boolean mask indicating where the values are not equal to -1,
-        # that is the ray hit the surface
-        multi_mask = (multi_tri != -1)
-        # Reverse the first dimension (N) to find the last non-(-1) value
-        # argmax returns the first occurrence of the maximum value (True) in this case
-        # like: [True, True, True, False] ->[False, True, True, True]->argmin->1
-        # the reversed_idx is 1 -> farthest layer should be 2
-        reversed_indices = multi_mask.flip(dims=(0,)).float().argmax(dim=0)  
-        exists = mask.any(dim=0)  # 检查每个 [h, w] 是否存在不为 -1 的值
-        N = rast.shape[0]
-        farthest_layer = torch.where(exists, N - 1 - reversed_indices, -1) #[h,w]
-        
-        valid_mask = (farthest_layer != -1) #[h,w]
-        farthest_layer = farthest_layer.unsqueeze(0) #[1, H, W]
-        farthest_layer = farthest_layer.clamp(min=0)  # Clamp invalid indices (-1) to 0
-        u = torch.gather(rast[..., 0], 0, farthest_layer)  # Shape: [1, H, W]
-        v = torch.gather(rast[..., 1], 0, farthest_layer)  # Shape: [1, H, W]  
-        tri=torch.gather(rast[..., 3], 0, farthest_layer) - 1 # Shape: [1, H, W] 
-        
-        contact_mask = ((mask>0) & valid_mask)
-        u, v, tri = u[0], v[0], tri[0] # Shape: [H, W]
+    else:
+        n_layer = 1
     
-    # if n_layer != 0:
-    #     contact_mask = remove_mask_elements_by_depth(contact_mask.cpu().numpy(), depth.cpu().numpy())
-    #     contact_mask = torch.tensor(contact_mask)
+    u = rast[n_layer, ..., 0]
+    v = rast[n_layer, ..., 1]
+    depth = rast[n_layer, ..., 2]
+    
+    tri = rast[n_layer, ..., 3] - 1 #['H', 'W']
+    contact_mask = ((mask>0) & (tri != -1))
+    if side == 'obj_front':
+        contact_mask = filter_by_depth_kmeans(contact_mask.cpu().numpy(), depth.cpu().numpy(), 'front')
+    else:
+        contact_mask = filter_by_depth_kmeans(contact_mask.cpu().numpy(), depth.cpu().numpy(), 'back')
+    
+    contact_mask = torch.tensor(contact_mask)
     
     p_id = torch.nonzero(contact_mask) # contact pixel id
     tri_id = tri[p_id[:, 0], p_id[:, 1]] 
@@ -413,7 +413,7 @@ def compute_hand_contact(
         last_valid_index = N - 1 - last_index_reversed  # Convert reversed indices to original indices
         valid_index = torch.where(exists, last_valid_index, -1)  # Set invalid positions to -1
         
-    contact_mask = (valid_index != -1)
+    contact_mask = (valid_index != -1) & (mask > 0)
     p_id = torch.nonzero(contact_mask) # contact pixel id
     tri_id = multi_tri[valid_index[contact_mask],p_id[:, 0], p_id[:, 1]] 
     verts_id = faces[tri_id.cpu().long()] # [num_tri, 3]
