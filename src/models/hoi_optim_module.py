@@ -82,14 +82,11 @@ class HOI_Sync:
         self.param_dim = {'hand':[('scale',1), ('transl',3)],
                           'obj': [('scale',1), ('transl',3), ('orient',3)]}
         if "hand_scale" not in cfg:
-            print("\n\n\n hand scale:", cfg.keys(), "\n\n\n")
-            
             self.global_params = {
                 'hand': torch.FloatTensor([5, 0, 0, 0]).to(self.device),
                 'obj': torch.FloatTensor([1, 0,0,0, 0,0,0]).to(self.device),
             }
         else:
-            print("\n\n\n hand scale:", cfg.hand_scale, "\n\n\n")
             self.global_params = {
                 'hand': torch.FloatTensor([cfg.hand_scale, 0, 0, 0]).to(self.device),
                 'obj': torch.FloatTensor([1, 0,0,0, 0,0,0]).to(self.device),
@@ -244,17 +241,13 @@ class HOI_Sync:
             
         return hand_iou.item(), o2h_dist.item()
             
-        
-        
-        
-        
     
-    def render_image(self, 
-                     hand_verts, hand_faces, 
-                     obj_verts, obj_faces,
-                     resolution,
-                     hand_color=None,
-                     ):
+    def render_hoi_image(self, 
+                    hand_verts, hand_faces, 
+                    obj_verts, obj_faces,
+                    resolution,
+                    hand_color=None,
+                    ):
         vtx_offset = hand_verts.shape[1]
         verts = torch.cat([hand_verts, obj_verts], dim=1)
         tri = torch.cat([hand_faces, obj_faces + vtx_offset], dim=0).int()
@@ -274,6 +267,18 @@ class HOI_Sync:
         img = self.renderer(verts, tri, color, projections, c2ws, resolution)
         
         return img
+    
+    def render_hand_image(self, hand_verts):
+        color_hand = torch.FloatTensor([1, 0, 0]).repeat(hand_verts.shape[1], 1)
+        color_hand = color_hand.unsqueeze(0).to(hand_verts.device)
+        
+        projections = self.data["obj_cam"]["projection"]
+        c2ws = self.data["obj_cam"]["extrinsics"]
+        c2ws = torch.cat([c2ws, torch.tensor([[0,0,0,1]], device=c2ws.device)], dim=0)
+        
+        img = self.renderer(hand_verts, self.hand_faces.squeeze().int(), color_hand, projections, c2ws, self.data["resolution"])
+        return img
+        
     
     def uniform_sample_objcam(self, center=None, phi_range=None, n_phi=10):
         # param from instantmesh
@@ -443,7 +448,10 @@ class HOI_Sync:
         obj_mesh = trimesh.Trimesh(vertices=verts.squeeze().cpu().numpy(), 
                                    faces=tri.squeeze().cpu().numpy())
         normals = torch.tensor(obj_mesh.vertex_normals).float().to(self.device)
-        front_mask = (self.data["inpaint_mask"] & (~self.data["obj_mask"])).int()
+        
+        
+        hoi_mask = self.data["hamer_hand_mask"].bool() & self.data["inpaint_mask"]
+        front_mask = (hoi_mask & self.data["inpaint_mask"] & (~self.data["obj_mask"])).int()
         obj_pts_front, obj_contact_normals_front, contact_mask_front = compute_obj_contact(
             side='obj_front',
             mask=front_mask,
@@ -454,7 +462,7 @@ class HOI_Sync:
         )
         
             
-        back_mask = (self.data["hamer_hand_mask"].bool() & (~self.data["hand_mask"])).int()
+        back_mask = (hoi_mask & self.data["inpaint_mask"] & self.data["hamer_hand_mask"].bool() & (~self.data["hand_mask"])).int()
         obj_pts_back, obj_contact_normals_back, contact_mask_back = compute_obj_contact(
             side='obj_back',
             mask=back_mask,
@@ -467,16 +475,19 @@ class HOI_Sync:
         obj_pts = torch.concat([obj_pts_front, obj_pts_back], dim=0)
         obj_contact_normals = torch.concat([obj_contact_normals_front, obj_contact_normals_back], dim=0)
         
-        if obj_pts.shape[0] == 0:
+        if obj_pts_front.shape[0] == 0 or obj_pts_back.shape[0] == 0:
             return False
         
         # if obj_pts.shape[0] > 500:
         #     obj_pts, mask = statistical_outlier_removal(obj_pts)
         #     obj_contact_normals = obj_contact_normals[mask]
         
-        self.obj_contact = {'front': obj_pts_front, 'back': obj_pts_back}
+        self.obj_contact = {'front': obj_pts_front, 
+                            'back': obj_pts_back,
+                            'both': obj_pts}
         self.obj_contact_normals = {'front': obj_contact_normals_front, 
-                                    'back': obj_contact_normals_back}
+                                    'back': obj_contact_normals_back,
+                                    'both': obj_contact_normals}
         
         if self.vis_mid_results:
             # vis for check, can be commented
@@ -494,12 +505,18 @@ class HOI_Sync:
             gt_obj_mask = transforms.ToPILImage()(gt_obj_mask)
             gt_obj_mask.save(os.path.join(self.cfg.out_dir, f"midresult/test_obj_cam/{img_id}_gt.png"))
             
+            contact_mask_img = ToPILImage(front_mask.detach().cpu().float())
+            contact_mask_img.save(os.path.join(self.cfg.out_dir, "contact", f"{img_id}_obj_mask_front.png"))
+            
+            contact_mask_img = ToPILImage(back_mask.detach().cpu().float())
+            contact_mask_img.save(os.path.join(self.cfg.out_dir, "contact", f"{img_id}_obj_mask_back.png"))
+            
             # output the object mesh with contact point
             verts = verts.squeeze().cpu().numpy()
             
-            num_front = obj_pts_front.shape[0]
             obj_pts_front = pc_to_sphere_mesh(obj_pts_front.cpu().numpy())
             obj_pts_back = pc_to_sphere_mesh(obj_pts_back.cpu().numpy())
+            num_front = obj_pts_front.vertices.shape[0]
             
             mesh = obj_mesh + obj_pts_front + obj_pts_back
             vertex_colors = np.ones((len(mesh.vertices), 4))  # [R, G, B, A]
@@ -642,7 +659,7 @@ class HOI_Sync:
         """
         loss for hand mask under differentialable rendering
         """
-        img = self.render_image(hand_verts=hand_verts,
+        img = self.render_hoi_image(hand_verts=hand_verts,
                                 hand_faces=self.hand_faces.squeeze(),
                                 obj_verts=obj_verts,
                                 obj_faces=self.data["object_faces"].squeeze(),
@@ -692,18 +709,9 @@ class HOI_Sync:
         loss for hand mask under differentialable rendering
         """
         
-        gt_hand_mask = self.data["hamer_hand_mask"].float()
-        # gt_hand_mask = self.data["hand_mask"].float()
+        gt_hand_mask = self.data["hamer_hand_mask"].float() # no obj rendered
         
-        color_hand = torch.FloatTensor([1, 0, 0]).repeat(hand_verts.shape[1], 1)
-        color_hand = color_hand.unsqueeze(0).to(hand_verts.device)
-        
-        projections = self.data["obj_cam"]["projection"]
-        c2ws = self.data["obj_cam"]["extrinsics"]
-        c2ws = torch.cat([c2ws, torch.tensor([[0,0,0,1]], device=c2ws.device)], dim=0)
-        
-        img = self.renderer(hand_verts, self.hand_faces.squeeze().int(), color_hand, projections, c2ws, self.data["resolution"])
-        
+        img = self.render_hand_image(hand_verts)
         pred_hand_mask = img[...,0]
         
         if not torch.any(pred_hand_mask>0):
@@ -745,14 +753,14 @@ class HOI_Sync:
         betas.requires_grad_()
         
         params_group = [
-            {'params': self.global_params['hand'], 'lr': 5e-4},
+            {'params': self.global_params['hand'], 'lr': 1e-2},
             {'params': fullpose_residual, 'lr': 1e-2},
             {'params': betas, 'lr': 1e-4},
         ]
         outer_iteration = 10
         
         self.optimizer = optim.Adam(params_group)
-        self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=200, gamma=0.5) 
+        # self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=200, gamma=0.5) 
         
         num_iterations = self.cfg['iteration']
         _, _, init_hand_mask, _ = self.optim_handpose(pca_pose, pca_pose, betas, hand_layer)
@@ -800,14 +808,14 @@ class HOI_Sync:
         betas.requires_grad_()
         
         params_group = [
-            {'params': self.global_params['hand'], 'lr': 1e-2},
+            {'params': self.global_params['hand'], 'lr': 5e-2},
             # {'params': betas, 'lr': 1e-4},
             {'params': orient_res, 'lr': 1e-5},
         ]
         outer_iteration = 20
         
         self.optimizer = optim.Adam(params_group)
-        self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=200, gamma=0.5) 
+        # self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=200, gamma=0.5) 
         
         num_iterations = self.cfg['iteration']
         
@@ -879,12 +887,18 @@ class HOI_Sync:
         hand_mesh_objcam = trimesh.Trimesh(vertices=hand_verts_objcam.detach().squeeze().cpu().numpy(), 
                                     faces=self.hand_faces.squeeze().cpu().numpy())
         
-        projections = self.data["hand_cam"]["projection"]
-        c2ws = self.data["hand_cam"]["extrinsics"]
-        c2ws = torch.cat([c2ws, torch.tensor([[0,0,0,1]], device=c2ws.device)], dim=0)
-        hand_depth, hand_rast = self.depth_peel(hand_verts_handcam, self.hand_faces.squeeze().int(), projections, c2ws, self.data["resolution"])
+        # projections = self.data["hand_cam"]["projection"]
+        # c2ws = self.data["hand_cam"]["extrinsics"]
+        # c2ws = torch.cat([c2ws, torch.tensor([[0,0,0,1]], device=c2ws.device)], dim=0)
+        # hand_depth, hand_rast = self.depth_peel(hand_verts_handcam, self.hand_faces.squeeze().int(), projections, c2ws, self.data["resolution"])
         
-        front_mask = (self.data["inpaint_mask"] & (~self.data["obj_mask"])).int()
+        projections = self.data["obj_cam"]["projection"]
+        c2ws = self.data["obj_cam"]["extrinsics"]
+        c2ws = torch.cat([c2ws, torch.tensor([[0,0,0,1]], device=c2ws.device)], dim=0)
+        hand_depth, hand_rast = self.depth_peel(hand_verts_objcam, self.hand_faces.squeeze().int(), projections, c2ws, self.data["resolution"])
+        
+        hoi_mask = self.data["hamer_hand_mask"].bool() & self.data["inpaint_mask"]
+        front_mask = ( hoi_mask & self.data["inpaint_mask"] & (~self.data["obj_mask"])).int()
         
         normals = hand_mesh_objcam.vertex_normals.copy()
         normals = torch.Tensor(normals).float().to(self.device)
@@ -898,7 +912,7 @@ class HOI_Sync:
                                                     skipped_face_ids=self.hand_backface_ids
                                                 )
         
-        back_mask = (self.data["hamer_hand_mask"].bool() & (~self.data["hand_mask"])).int()
+        back_mask = ( hoi_mask & self.data["hamer_hand_mask"].bool() & (~self.data["hand_mask"])).int()
         hand_pts_back, hand_normals_back, contact_mask_back = compute_hand_contact(
                                                     side='hand_back',
                                                     mask = back_mask,
@@ -909,20 +923,24 @@ class HOI_Sync:
                                                     skipped_face_ids=self.hand_backface_ids
                                                 )
         
-        # hand_pts = torch.concat([hand_pts_front, hand_pts_back], dim=0)
-        # hand_normals = torch.concat([hand_normals_front, hand_normals_back], dim=0)
+        hand_pts = torch.concat([hand_pts_front, hand_pts_back], dim=0)
+        hand_normals = torch.concat([hand_normals_front, hand_normals_back], dim=0)
         contact_mask = (contact_mask_front | contact_mask_back)
-        hand_contact = {'front': hand_pts_front, 'back': hand_pts_back}
-        hand_contact_normal = {'front': hand_normals_front, 'back': hand_normals_back}
+        hand_contact = {'front': hand_pts_front, 
+                        'back': hand_pts_back,
+                        'both': hand_pts}
+        hand_contact_normal = {'front': hand_normals_front, 
+                            'back': hand_normals_back,
+                            'both': hand_normals}
         
         # <---------- For visualization ------------>
         if self.vis_mid_results:
             name = self.data['name']
             contact_mask_img = ToPILImage(front_mask.detach().cpu().float())
-            contact_mask_img.save(os.path.join(self.cfg.out_dir, "contact", f"{name}_contact_mask_front.png"))
+            contact_mask_img.save(os.path.join(self.cfg.out_dir, "contact", f"{name}_hand_mask_front.png"))
             
             contact_mask_img = ToPILImage(back_mask.detach().cpu().float())
-            contact_mask_img.save(os.path.join(self.cfg.out_dir, "contact", f"{name}_contact_mask_back.png"))
+            contact_mask_img.save(os.path.join(self.cfg.out_dir, "contact", f"{name}_hand_mask_back.png"))
             
             image_utils.save_depth(hand_depth.detach(), 
                                     os.path.join(self.cfg.out_dir, "contact", f"{name}_hand_depth"),
@@ -937,17 +955,21 @@ class HOI_Sync:
         return hand_mesh_objcam, hand_verts_objcam, hand_contact, hand_contact_normal
     
     def optim_contact(self, hand_mesh, hand_verts, hand_contact, hand_contact_normal):
+        obj_verts = self.transform_obj(**self.get_params_for('obj'))
+        gt_hand_mask = self.data["hand_mask"].float()
+        
         min_error = float('inf')
         best_t = None
+        best_side = None
         trans_hand_pts = {}
-        for side in ['front', 'back']:
+        for side in ['front', 'back', 'both']:
             if len(hand_contact[side]) == 0:
                 hand_contact[side] = hand_verts.squeeze()
                 hand_contact_normal[side] = hand_mesh.vertex_normals
                 hand_contact[side] = hand_contact[side][self.hand_contact_zone]
                 hand_contact_normal[side] = hand_contact_normal[side][self.hand_contact_zone]
                 hand_contact_normal[side] = torch.Tensor(hand_contact_normal[side]).float().to(self.device)
-            R, t, scale, trans_hand_pts[side], error = icp_with_scale(
+            R, t, scale, trans_hand_pts[side], error_3d = icp_with_scale(
                 src_points=hand_contact[side],
                 src_norm=-hand_contact_normal[side], # we hope the hand normal be opposite to object's
                 tgt_points=self.obj_contact[side],
@@ -957,8 +979,20 @@ class HOI_Sync:
                 device=self.device
             )
             
+            after_hand_verts = (scale * hand_verts) @ R.T + t
+            # img = self.render_hand_image(hand_verts=after_hand_verts)
+            img = self.render_hoi_image(after_hand_verts, self.hand_faces.squeeze(), 
+                                obj_verts, self.data["object_faces"].squeeze(),
+                                resolution=self.data["resolution"])
+            pred_hand_mask = img[...,0]
+            error_2d = soft_iou_loss(pred_hand_mask, gt_hand_mask)
+            error = error_3d + error_2d
+            print(side, 'error: ', error.item(), 'error_2d: ', error_2d.item(), 'error_3d: ', error_3d.item())
+            
             if error < min_error and not torch.isnan(t).any():
                 best_t = t
+                best_side = side
+                min_error = error
         
         if best_t is None:
             return
@@ -973,9 +1007,10 @@ class HOI_Sync:
         name = self.data['name']
         # output the hand mesh with contact point
         verts = hand_verts.detach().squeeze().cpu().numpy()
-        num_front = hand_contact['front'].shape[0]
         hand_pts_front = pc_to_sphere_mesh(hand_contact['front'].detach().cpu().numpy())
         hand_pts_back = pc_to_sphere_mesh(hand_contact['back'].detach().cpu().numpy())
+        
+        num_front = hand_pts_front.vertices.shape[0]
         mesh = hand_mesh + hand_pts_front + hand_pts_back
         vertex_colors = np.tile([0.5,0.5,0.5,1], (len(mesh.vertices), 1))  # [R, G, B, A]
         vertex_colors[len(verts):len(verts)+num_front, :] = [1.0, 0.0, 0.0, 1.0]  # Red
@@ -985,17 +1020,20 @@ class HOI_Sync:
         mesh.export(os.path.join(self.cfg.out_dir, "contact", f"{name}_hand.ply"))
         
         # output the transformed hand mesh with contact point
+        trans_hand_pts = trans_hand_pts[best_side]
         hand_mesh = trimesh.Trimesh(vertices=after_hand_verts.detach().squeeze().cpu().numpy(), 
                                     faces=self.hand_faces.squeeze().cpu().numpy())
-        num_front = trans_hand_pts['front'].shape[0]
-        trans_hand_pts_front = pc_to_sphere_mesh(trans_hand_pts['front'].detach().cpu().numpy())
-        trans_hand_pts_back = pc_to_sphere_mesh(trans_hand_pts['back'].detach().cpu().numpy())
         
-        mesh = hand_mesh + trans_hand_pts_front + trans_hand_pts_back
+        trans_hand_pts = pc_to_sphere_mesh(trans_hand_pts.detach().cpu().numpy())
+        
+        mesh = hand_mesh + trans_hand_pts
         vertex_colors = np.tile([0.5,0.5,0.5,1], (len(mesh.vertices), 1))  # [R, G, B, A]
-        vertex_colors[len(verts):len(verts)+num_front, :] = [1.0, 0.0, 0.0, 1.0]  # Red
-        vertex_colors[len(verts)+num_front:, :] = [0.0, 1.0, 0.0, 1.0]  # Green
-        
+        if best_side == 'front':
+            vertex_colors[len(verts):, :] = [1.0, 0.0, 0.0, 1.0]  # Red
+        elif best_side == 'back':
+            vertex_colors[len(verts):, :] = [0.0, 1.0, 0.0, 1.0]  # Green
+        else:
+            vertex_colors[len(verts):, :] = [0.0, 0.0, 1.0, 1.0]  # Blue
         if vertex_colors.size > 0:
             mesh.visual.vertex_colors = vertex_colors
             mesh.export(os.path.join(self.cfg.out_dir, "contact", f"{name}_hand_after.ply"))
@@ -1312,7 +1350,7 @@ class HOI_Sync:
         # hand_faces = torch.tensor(self.hand_faces.astype(np.int32)).to(hand_verts.device)
         
         # export rendered image
-        img = self.render_image(hand_verts, self.hand_faces.squeeze(), 
+        img = self.render_hoi_image(hand_verts, self.hand_faces.squeeze(), 
                                 obj_verts, self.data["object_faces"].squeeze(),
                                 resolution=self.data["resolution"])
         img = img.detach().cpu().numpy() 
