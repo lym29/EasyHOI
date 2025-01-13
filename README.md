@@ -149,7 +149,9 @@ python preprocess/resample_mesh.py --data_dir $DATA_DIR [--resample]
 ### Optimization
 ```
 conda activate easyhoi
-python src/optim_easyhoi.py -cn optim_teaser
+python src/optim_easyhoi.py -cn optim_teaser       #use instantmesh results
+python src/optim_easyhoi.py -cn optim_teaser_tripo #use tripo3d results
+
 
 ```
 

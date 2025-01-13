@@ -300,7 +300,11 @@ def remove_mask_elements_by_depth(mask, depth_map):
     return mask
 
 def filter_by_depth_kmeans(mask, depth_map, side, n_clusters=3):
+    if (mask > 0).any() == False:
+        return None
+    
     masked_depth = depth_map[mask > 0].reshape(-1, 1)  # Only consider depth values within the mask region
+        
     kmeans = KMeans(n_clusters=n_clusters, random_state=42)
     labels = kmeans.fit_predict(masked_depth)
     
@@ -349,6 +353,9 @@ def compute_obj_contact(
         contact_mask = filter_by_depth_kmeans(contact_mask.cpu().numpy(), depth.cpu().numpy(), 'front')
     else:
         contact_mask = filter_by_depth_kmeans(contact_mask.cpu().numpy(), depth.cpu().numpy(), 'back')
+        
+    if contact_mask is None:
+        return None, None, None
     
     contact_mask = torch.tensor(contact_mask)
     

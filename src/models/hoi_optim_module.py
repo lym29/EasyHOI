@@ -472,16 +472,13 @@ class HOI_Sync:
             rast=self.object_rast
         )
         
-        obj_pts = torch.concat([obj_pts_front, obj_pts_back], dim=0)
-        obj_contact_normals = torch.concat([obj_contact_normals_front, obj_contact_normals_back], dim=0)
-        
-        if obj_pts_front.shape[0] == 0 or obj_pts_back.shape[0] == 0:
-            return False
-        
-        # if obj_pts.shape[0] > 500:
-        #     obj_pts, mask = statistical_outlier_removal(obj_pts)
-        #     obj_contact_normals = obj_contact_normals[mask]
-        
+        if obj_pts_front is not None and obj_pts_back is not None:
+            obj_pts = torch.concat([obj_pts_front, obj_pts_back], dim=0)
+            obj_contact_normals = torch.concat([obj_contact_normals_front, obj_contact_normals_back], dim=0)
+        else:
+            obj_pts = None
+            obj_contact_normals = None
+            
         self.obj_contact = {'front': obj_pts_front, 
                             'back': obj_pts_back,
                             'both': obj_pts}
@@ -514,18 +511,26 @@ class HOI_Sync:
             # output the object mesh with contact point
             verts = verts.squeeze().cpu().numpy()
             
-            obj_pts_front = pc_to_sphere_mesh(obj_pts_front.cpu().numpy())
-            obj_pts_back = pc_to_sphere_mesh(obj_pts_back.cpu().numpy())
-            num_front = obj_pts_front.vertices.shape[0]
-            
-            mesh = obj_mesh + obj_pts_front + obj_pts_back
+            if obj_pts_front is not None:
+                obj_pts_front = pc_to_sphere_mesh(obj_pts_front.cpu().numpy())
+                num_front = obj_pts_front.vertices.shape[0]
+                mesh = obj_mesh + obj_pts_front
+            else:
+                obj_pts_front = trimesh.Trimesh(vertices=[], faces=[])
+                num_front = 0
+                mesh = obj_mesh
+            if obj_pts_back is not None:
+                obj_pts_back = pc_to_sphere_mesh(obj_pts_back.cpu().numpy())
+                mesh = mesh + obj_pts_back
+            else:
+                obj_pts_back = trimesh.Trimesh(vertices=[], faces=[])
+
             vertex_colors = np.ones((len(mesh.vertices), 4))  # [R, G, B, A]
             vertex_colors[len(verts):len(verts)+num_front, :] = [1.0, 0.0, 0.0, 1.0]  # Red
             vertex_colors[len(verts)+num_front:, :] = [0.0, 1.0, 0.0, 1.0]  # Green
             mesh.visual.vertex_colors = vertex_colors
             mesh.export(os.path.join(self.cfg.out_dir, "contact", f"{img_id}_obj.ply"))
             
-        return True
         
     def depth_peel(self, verts, tri, projection, c2ws, resolution, num_layers=4, znear=0.1, zfar=100):
         device = projection.device
@@ -688,7 +693,7 @@ class HOI_Sync:
         fullpose = mano_output.full_poses
         return loss, fullpose.detach(), pred_hand_mask.detach(), pred_obj_mask.detach()
     
-    def optim_handpose_global(self, fullpose, betas, scale=None):
+    def optim_handpose_global(self, fullpose, betas, scale=None, use_3d_loss = False):
         mano_output: MANOOutput = self.mano_layer(fullpose, betas)
         if scale is None:
             hand_verts = self.get_hand_verts(mano_output.verts, **self.get_params_for('hand'))
@@ -725,17 +730,23 @@ class HOI_Sync:
             else:
                 loss_2d = 10 * iou 
         
-        # penetr_loss, contact_loss = compute_h2o_sdf_loss(self.data["object_sdf"], 
-        #                                     hand_verts,
-        #                                     self.hand_contact_zone)
-        # loss_3d = (contact_loss * 10 + penetr_loss)
-        
-        loss = loss_2d #+ loss_3d
-        self.log({"iou": iou,
-                  "2d mask loss": loss_2d,
-                # "3d loss": loss_3d
-                }, step=self.global_step)
-        
+        if use_3d_loss:
+            penetr_loss, contact_loss = compute_h2o_sdf_loss(self.data["object_sdf"], 
+                                                hand_verts,
+                                                self.hand_contact_zone)
+            loss_3d = (contact_loss * 10 + penetr_loss)
+            loss = loss_2d + loss_3d
+            self.log({"iou": iou,
+                    "2d mask loss": loss_2d,
+                    "3d loss": loss_3d
+                    }, step=self.global_step)
+        else:
+            loss = loss_2d 
+            self.log({"iou": iou,
+                    "2d mask loss": loss_2d,
+                    # "3d loss": loss_3d
+                    }, step=self.global_step)
+
         return loss, pred_hand_mask, info, iou.item()
     
     def run_handpose_refine(self):  
@@ -818,6 +829,7 @@ class HOI_Sync:
         # self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=200, gamma=0.5) 
         
         num_iterations = self.cfg['iteration']
+        use_3d_loss = False
         
         _, init_hand_mask, init_info, iou = self.optim_handpose_global(fullpose, betas)
         
@@ -830,7 +842,8 @@ class HOI_Sync:
                 self.optimizer.zero_grad()
                 fullpose_new = fullpose.clone()
                 fullpose_new[:,:3] += orient_res
-                loss, pred_hand_mask, optim_info, iou = self.optim_handpose_global(fullpose_new, betas)                     
+                loss, pred_hand_mask, _, _ = self.optim_handpose_global(fullpose_new, betas, 
+                                                                        use_3d_loss=use_3d_loss)                     
                 
                 loss.backward()
                 self.optimizer.step()
@@ -849,9 +862,9 @@ class HOI_Sync:
                 fullpose_new = best_fullpose
                 self.global_params['hand'] = best_global_params
                 hand_mesh, hand_verts, hand_contact, hand_c_normals = self.get_hand_contact(fullpose_new, betas.detach())
-                self.optim_contact(hand_mesh, hand_verts, hand_contact, hand_c_normals) # adjust the transl 
-                print("\n\ntransl back to optim: ", self.global_params['hand'][1:].detach())   
-        
+                succ = self.optim_contact(hand_mesh, hand_verts, hand_contact, hand_c_normals) # adjust the transl 
+                if succ == False:
+                    use_3d_loss = True
         
         self.mano_input['fullpose'] = best_fullpose
         self.global_params['hand'] = best_global_params
@@ -963,6 +976,8 @@ class HOI_Sync:
         best_side = None
         trans_hand_pts = {}
         for side in ['front', 'back', 'both']:
+            if self.obj_contact[side] is None:
+                continue
             if len(hand_contact[side]) == 0:
                 hand_contact[side] = hand_verts.squeeze()
                 hand_contact_normal[side] = hand_mesh.vertex_normals
@@ -995,7 +1010,7 @@ class HOI_Sync:
                 min_error = error
         
         if best_t is None:
-            return
+            return False
         
         with torch.no_grad():
             self.global_params['hand'][1:] += best_t
@@ -1037,6 +1052,8 @@ class HOI_Sync:
         if vertex_colors.size > 0:
             mesh.visual.vertex_colors = vertex_colors
             mesh.export(os.path.join(self.cfg.out_dir, "contact", f"{name}_hand_after.ply"))
+            
+        return True
         
     
     def hamer_process(self, vertices):

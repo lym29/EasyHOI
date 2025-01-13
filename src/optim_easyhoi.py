@@ -362,9 +362,8 @@ def main(cfg : DictConfig) -> None:
         hoi_sync.get_hamer_hand_mask()
         print("optim_obj_cam")
         hoi_sync.export_for_eval(prefix="before_camsetup")
-        succ = hoi_sync.optim_obj_cam()
-        if succ is False:
-            continue
+        hoi_sync.optim_obj_cam()
+        
         hoi_sync.export(prefix="init")
         hoi_sync.export_for_eval(prefix="init")
         
