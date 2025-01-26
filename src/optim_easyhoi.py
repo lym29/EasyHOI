@@ -1,13 +1,13 @@
 import os
 import os.path as osp
-from pathlib import Path
+import json
 import random
 import hydra
 from omegaconf import DictConfig, OmegaConf
 import rootutils
 rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 
-import igl
+import time
 import trimesh
 from PIL import Image
 import torch
@@ -23,7 +23,9 @@ from src.utils.cam_utils import (
     get_projection,
     correct_image_orientation,
     resize_frame,
-    center_looking_at_camera_pose
+    center_looking_at_camera_pose,
+    calc_orig_cam_params,
+    adjust_principal_point
 )
 os.environ['PYOPENGL_PLATFORM'] = 'egl'
 
@@ -44,23 +46,25 @@ def image_process(input_image, hand_mask, obj_mask, inpaint_mask):
     
     return input_image, hand_mask, obj_mask, inpaint_mask
         
-def get_obj_cam(device, w, h):
+def get_obj_cam(device, w, h, crop_bbox):
     # param from instantmesh
     DEFAULT_DIST = 4.5
     DEFAULT_FOV = 30.0
-    focal_length = 0.5 / np.tan(np.deg2rad(DEFAULT_FOV) * 0.5)
-    # cam_pose = torch.FloatTensor([DEFAULT_DIST, 0, 0]).cuda()
-    cam_pose = torch.FloatTensor([DEFAULT_DIST, 0, 0]).cuda()
     
+    cam_dist, fov = calc_orig_cam_params(DEFAULT_DIST, DEFAULT_FOV, W_orig=w, H_orig=h, crop_bbox=crop_bbox)
+    cx, cy = adjust_principal_point(crop_bbox, w, h)
+    focal_length = 0.5 / np.tan(np.deg2rad(fov) * 0.5)
+    cam_pose = torch.FloatTensor([cam_dist, 0, 0]).cuda()
     
-    obj_cam = {'fx':focal_length, 'fy': focal_length, 'cx': 0.5, 'cy': 0.5}
+    ratio = w/h
+    
+    obj_cam = {'fx':focal_length, 'fy': focal_length*ratio, 'cx': cx, 'cy': cy}
     obj_cam["extrinsics"] = center_looking_at_camera_pose(cam_pose).to(device)
     obj_cam["projection"] = torch.FloatTensor(get_projection(obj_cam, width=w, height=h)).to(device)
     
     return obj_cam
 
 def get_obj_cam_tripo(device, w, h):
-    # param from instantmesh
     DEFAULT_DIST = 3.5
     DEFAULT_FOV = 30.0
     focal_length = 0.5 / np.tan(np.deg2rad(DEFAULT_FOV) * 0.5)
@@ -189,15 +193,18 @@ def load_data_single(cfg: DictConfig, file, hand_id, is_tripo = False):
     for key in mano_params:
         mano_params[key] = torch.tensor(mano_params[key]).to(device).unsqueeze(0)
         
-    """Adjust the cam params to fit object into hand cam coordinates"""
+    """Adjust the cam params"""
     
     hand_cam = load_cam(hand_cam_file, device=device)
     hand_cam["projection"] = torch.tensor(get_projection(hand_cam, origin_w, origin_h)).float().to(device)
     
+    bbox_file = osp.join(cfg.base_dir, "obj_recon/inpaint/hoi_box/", f"{img_fn}.json")
+    with open(bbox_file, "r") as file:
+        bbox = json.load(file)  # Directly loads the bbox as a list
     if is_tripo:
         obj_cam = get_obj_cam_tripo(device, origin_w, origin_h)
     else:
-        obj_cam = get_obj_cam(device, origin_w, origin_h)
+        obj_cam = get_obj_cam(device, origin_w, origin_h, bbox)
         
     obj_verts = torch.tensor(obj_mesh.vertices).float().cuda()
     obj_faces = obj_mesh.faces
@@ -216,8 +223,8 @@ def load_data_single(cfg: DictConfig, file, hand_id, is_tripo = False):
         
         obj_verts = obj_verts @ rot1.T
         print("Done tripo trans")
-        # obj_faces = np.array(obj_mesh.faces[:, ::-1])
-        
+    
+    # process object mesh into sdf
     obj_mesh = trimesh.Trimesh(obj_verts.clone().cpu().numpy(), obj_faces)
         
     obj_sdf_origin = obj_mesh.bounding_box.centroid.copy()
@@ -271,7 +278,7 @@ def load_data_single(cfg: DictConfig, file, hand_id, is_tripo = False):
     return ret
     
 
-@hydra.main(version_base=None, config_path="./configs", config_name="optim_notip_arctic")
+@hydra.main(version_base=None, config_path="./configs", config_name="optim_teaser")
 def main(cfg : DictConfig) -> None:
     exp_cfg = OmegaConf.create(cfg['experiments'])
     data_cfg = OmegaConf.create(cfg['data']) 
@@ -360,22 +367,37 @@ def main(cfg : DictConfig) -> None:
         
         print("get_hamer_hand_mask")
         hoi_sync.get_hamer_hand_mask()
-        print("optim_obj_cam")
-        hoi_sync.export_for_eval(prefix="before_camsetup")
+        # hoi_sync.export_for_eval(prefix="before_camsetup")
+        
+        # stage 1: camera setup
+        start_time = time.time()
+        print("optim_obj_cam start:", start_time)
         hoi_sync.optim_obj_cam()
-        
+        end_time = time.time()
+        print("optim_obj_cam end:", end_time)
+        print("optim_obj_cam takes: ", end_time - start_time)
         hoi_sync.export(prefix="init")
-        hoi_sync.export_for_eval(prefix="init")
+        # hoi_sync.export_for_eval(prefix="init")
         
-        print("run_handpose, global")
+        # Stage 2: contact alignment
+        start_time = time.time()
+        print("contact alignment start:", start_time)
         hoi_sync.run_handpose_global()
+        end_time = time.time()
+        print("contact alignment end:", end_time)
+        print("contact alignment takes:", end_time - start_time)
         hoi_sync.export(prefix="after_global")
-        hoi_sync.export_for_eval(prefix="after_global")
+        # hoi_sync.export_for_eval(prefix="after_global")
         
-        print("run_handpose, not global")
+        # Stage 3: hand refine
+        start_time = time.time()
+        print("hand refine start:", start_time)
         hoi_sync.run_handpose_refine()
+        end_time = time.time()
+        print("hand refine end:", end_time)
+        print("hand refine takes:", end_time - start_time)
+        
         hoi_sync.export(prefix="after")
-        hoi_sync.export_for_retarget()
         hoi_sync.export_for_eval(prefix="final")
         
         os.remove(lock_file)

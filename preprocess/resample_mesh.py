@@ -221,19 +221,14 @@ def main(folder, resample=False):
             continue
         
         if resample:
-            point_clouds = generate_depth_images(orig_mesh_path)
-            mesh = poisson_reconstruct(point_clouds)
-            o3d.io.write_triangle_mesh(out_path, mesh)
-            o3d.io.write_point_cloud(pc_path, point_clouds)
-            meshfix(out_path, fixed_path, orig_mesh_path)
-            # try:
-            #     point_clouds = generate_depth_images(orig_mesh_path)
-            #     mesh = poisson_reconstruct(point_clouds)
-            #     o3d.io.write_triangle_mesh(out_path, mesh)
-            #     o3d.io.write_point_cloud(pc_path, point_clouds)
-            #     meshfix(out_path, fixed_path, orig_mesh_path)
-            # except:
-            #     print(orig_mesh_path, " MeshFix Wrong")
+            try:
+                point_clouds = generate_depth_images(orig_mesh_path)
+                mesh = poisson_reconstruct(point_clouds)
+                o3d.io.write_triangle_mesh(out_path, mesh)
+                o3d.io.write_point_cloud(pc_path, point_clouds)
+                meshfix(out_path, fixed_path, orig_mesh_path)
+            except:
+                print(orig_mesh_path, " MeshFix Wrong")
         else:
             try:
                 mesh:trimesh.Trimesh = trimesh.load(os.path.join(data_dir, "full.obj"))
