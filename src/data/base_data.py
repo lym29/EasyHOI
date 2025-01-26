@@ -12,16 +12,12 @@ from torch.utils.data import Dataset
 import tqdm
 from manotorch.manolayer import ManoLayer, MANOOutput
 import trimesh
-import random
+import shutil
 import pandas as pd
 import rootutils
 rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 
 from src.utils.ho_det_utils import (
-    filter_object,
-    parse_det,
-    intersect_box,
-    union_box,
     compute_iou,
     mask_to_bbox
 )
@@ -42,6 +38,17 @@ def create_symbolic_links(image_path_list, link_dir):
         except OSError as e:
             print(f"Error creating link for {path}: {e}")
 
+def extract_img(img_path_list, img_dir, img_name_list = None):
+    shutil.rmtree(img_dir)
+    os.makedirs(img_dir, exist_ok=True)
+    if img_name_list is None:
+        img_name_list = list(range(len(img_path_list)))
+    for id, src_path in enumerate(img_path_list):
+        _, file_extension = os.path.splitext(src_path)
+        file_format = file_extension[1:]
+        tgt_path = osp.join(img_dir, f"{img_name_list[id]}.{file_format}")
+        shutil.copy(src_path, tgt_path)
+    
 class BaseData(Dataset):
     def __init__(self, data_dir, split="evaluation"):
         super().__init__()
@@ -162,97 +169,18 @@ class ImgData(BaseData):
         
         self.for_inpaint=False
         
-        # self.load_annos()
-        # self.load_annos_simple()
-        
-    def load_annos_old(self):
-        
-        split_file = osp.join(self.data_dir, 'split', f'{self.split}.csv')
-        df = pd.read_csv(split_file)
-        data_dict = df.to_dict(orient='list')
-        
-        dtype = [
-            ('img_id', 'U10'),  # Unicode string of max length 10
-            ('img_obj_id', 'O'),  # Object, to accommodate arrays of various lengths
-            ('img_hand_id', 'O'),
-            ('hamer_info', 'O')
-        ]
-        filtered_file = osp.join(self.data_dir,f"{self.split}_filtered.npy")
-        
-        if osp.exists(filtered_file):
-            img_id_list = np.load(filtered_file, allow_pickle=True)
-            self.img_id_list = [(d['img_id'], 
-                                 d['img_obj_id'], 
-                                 d['img_hand_id'], 
-                                 d['hamer_info']) for d in img_id_list]
-        else:
-            self.img_id_list = []
-            for img_id, _ in enumerate(tqdm(data_dict['img_path'])):
-                
-                obj_dets = self.get_det_results(image_id=f"{img_id}", key="object")
-                hand_dets = self.get_det_results(image_id=f"{img_id}", key="hand")
-                res = filter_object(obj_dets, hand_dets)
-                if res is None:
-                    continue
-                img_obj_id, img_hand_id = res
-                hand_boxes = parse_det(hand_dets[img_hand_id])['bbox']
-                is_right = parse_det(hand_dets[img_hand_id])['is_right']
-                hamer_info = []
-                for i in range(hand_boxes.shape[0]):
-                    hamer_info.append(self.load_hamer_info(img_id, hand_boxes[i], is_right[i]))
-                self.img_id_list.append((img_id, img_obj_id, img_hand_id, hamer_info))
-                
-            np.save(filtered_file, np.array(self.img_id_list, dtype=dtype))
-            
-        self.annos = [ ]
-        
-        # self.img_id_list = random.sample(self.img_id_list, 500)
-        
-        for item in tqdm(self.img_id_list):
-            img_id, img_obj_id, img_hand_id, hamer_info = item
-            path = data_dict['img_path'][int(img_id)]
-            self.annos.append({'image_path': path,
-                               'img_id':img_id,
-                               'img_obj_id': img_obj_id,
-                               'img_hand_id': img_hand_id,
-                               'hamer_info': hamer_info
-                                })
             
     def load_annos(self):
         self.annos = [ ]
-        img_id_list = [i for i in range(30)] + [i for i in range(30, 400, 10)] + [i for i in range(400, 1400, 100)]
-        
-        split_file = osp.join(self.data_dir, 'split', f'{self.split}.csv')
-        # if os.path.exists(split_file):
-        if False:
-            df = pd.read_csv(split_file)
-            data_dict = df.to_dict(orient='list')
-            for id, _ in enumerate(tqdm(data_dict['img_path'])):
-                path = data_dict['img_path'][id]
-                img_id = data_dict['img_id'][id]
-                if img_id not in img_id_list:
-                    continue
-                if 'sid_seq_name' in data_dict:
-                    obj_category = data_dict['sid_seq_name'][id].split('/')[1].split('_')[0]
-                    prompt = obj_category
-                else:
-                    prompt = "Remove the hand from the object and restore the object to its original appearance. Ensure that no human skin or fingers are visible."
-                print(prompt)
-                
-                self.annos.append({'image_path': path,
-                                'img_id':img_id,
-                                'prompt':prompt
-                                })
-        else:
-            img_dir = os.path.join(self.data_dir, "images")
-            prompt = "Remove the hand from the object and restore the object to its original appearance. Remove all the fingers."
-            for file in os.listdir(img_dir):
-                if not file.endswith(("png", "jpg")):
-                    continue
-                self.annos.append({'image_path': os.path.join(img_dir, file),
-                                'img_id':file.split('.')[0],
-                                'prompt':prompt
-                                })
+        img_dir = os.path.join(self.data_dir, "images")
+        prompt = "Remove the hand from the object and restore the object to its original appearance. Remove all the fingers."
+        for file in os.listdir(img_dir):
+            if not file.endswith(("png", "jpg")):
+                continue
+            self.annos.append({'image_path': os.path.join(img_dir, file),
+                            'img_id':file.split('.')[0],
+                            'prompt':prompt
+                            })
         
     def __len__(self):
         return len(self.annos)

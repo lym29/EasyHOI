@@ -61,8 +61,6 @@ from preprocess.utils.sdedit import upsample as denoised_up
 from preprocess.utils.sdedit import load_up as load_denoise_up
 
 from src.data import (
-    ImagesForInpaint,
-    HO3D,
     ImgData
 )
 

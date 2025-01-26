@@ -16,8 +16,6 @@ rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 
 from preprocess.utils import image_utils
 from src.data import (
-    MOW, 
-    HO3D, 
     ImgData
 )
 
@@ -304,13 +302,7 @@ def seg_after_inpaint_graphcut(data_dir, save_dir, datatype):
         folder = os.path.join(save_dir, folder)
         os.makedirs(folder, exist_ok=True)
         
-    if datatype == "mow" or datatype == "in_the_wild":
-        ds = MOW(data_dir)
-    elif datatype == "ho3d":
-        ds = HO3D(data_dir)
-    elif datatype in ["oakink", "arctic"]:
-        ds = ImgData(data_dir)
-    
+    ds = ImgData(data_dir)
     # input
     inpainted_dir = os.path.join(data_dir, 'obj_recon/inpaint/glide_obj')
     img_list = [file.rstrip('.png') for file in os.listdir(inpainted_dir) if file.endswith('.png')]
