@@ -422,8 +422,7 @@ class HOI_Sync:
             
             if iou_loss > 0.9:
                 sinkhorn_loss = compute_sinkhorn_loss(mask_opt.contiguous(), gt_obj_mask.contiguous())
-                reg_loss = torch.abs(mask_opt.sum() - gt_obj_mask.sum())
-                loss = sinkhorn_loss +iou_loss + 10 * reg_loss
+                loss = sinkhorn_loss + iou_loss
             else:
                 sinkhorn_loss = 0
                 loss = iou_loss
