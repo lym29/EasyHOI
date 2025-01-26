@@ -775,6 +775,7 @@ def occlusion_loss(pred_mask, tgt_mask, obj_mask):
 sinkhorn_loss = SamplesLoss('sinkhorn')
 def compute_sinkhorn_loss(pred_mask, gt_mask, max_num = 1000):
     reg_loss = torch.abs(pred_mask.sum() - gt_mask.sum())
+    # print("reg_loss: ", reg_loss.item())
     
     # Convert masks to "point clouds" with weights
     pred_pts = pred_mask.nonzero(as_tuple=False).float()
@@ -801,9 +802,16 @@ def compute_sinkhorn_loss(pred_mask, gt_mask, max_num = 1000):
     pred_w /= pred_num
     gt_w /= gt_num
     
-    main_loss = sinkhorn_loss(pred_w.contiguous(), pred_pts.contiguous(), 
-                         gt_w.contiguous(), gt_pts.contiguous())
-    main_loss /= gt_num
+    if pred_w.numel() == 0 or pred_pts.numel() == 0:
+        # Handle empty inputs explicitly
+        main_loss = 0
+        # print("main_loss: ", 0)
+    else:
+        # Compute Sinkhorn loss
+        main_loss = sinkhorn_loss(pred_w.contiguous(), pred_pts.contiguous(), 
+                                gt_w.contiguous(), gt_pts.contiguous())
+        main_loss /= gt_num
+        # print("main_loss: ", main_loss.item())
     
     loss = main_loss + 10 * reg_loss
     

@@ -150,9 +150,9 @@ def calc_orig_cam_params(D_crop,fov_crop, W_orig, H_orig, crop_bbox):
     - fov_orig: Field of view for the original image (in degrees, float).
     """
     # Extract bbox dimensions from the cropped image
-    x_min, y_min, x_max, y_max = crop_bbox
-    bbox_width = x_max - x_min
-    bbox_height = y_max - y_min
+    x_min, y_min, bbox_width, bbox_height = crop_bbox
+    x_max = bbox_width + x_min
+    y_max = bbox_height + y_min
 
     # Calculate scaling factors for width and height
     scale_w = W_orig / bbox_width
@@ -184,8 +184,12 @@ def adjust_principal_point(crop_bbox, w, h):
     - cy: Adjusted y-coordinate of the principal point (normalized, float).
     """
     # Calculate the normalized crop box center
-    cx_crop = (crop_bbox[0] + crop_bbox[2]) / 2 / w  # Normalize x-center
-    cy_crop = (crop_bbox[1] + crop_bbox[3]) / 2 / h  # Normalize y-center
+    x_min, y_min, bbox_width, bbox_height = crop_bbox
+    x_max = bbox_width + x_min
+    y_max = bbox_height + y_min
+
+    cx_crop = (x_min + x_max) / 2 / w  # Normalize x-center
+    cy_crop = (y_min + y_max) / 2 / h  # Normalize y-center
 
     # Return adjusted principal point
     return cx_crop, cy_crop
