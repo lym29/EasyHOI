@@ -103,7 +103,7 @@ def voronoi_sampling_with_centroid(mask, contour, num_points=10, iteration=5):
     if len(valid_positions) < 3 * num_points:
         initial_points = valid_positions
     else:
-        initial_points_idx = np.random.choice(len(valid_positions), 10 * num_points, replace=False)
+        initial_points_idx = np.random.choice(len(valid_positions), 3 * num_points, replace=False)
         initial_points = valid_positions[initial_points_idx]
 
     # construct Voronoi diagram

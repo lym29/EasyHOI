@@ -5,6 +5,7 @@ import json
 from typing import Dict
 from pyrender.camera import IntrinsicsCamera
 from PIL import Image, ExifTags
+import math
 
 def batched_cam(cam, batch_size):
     cam_ext, cam_int = cam["extrinsics"], cam["intrinsic"]
@@ -132,3 +133,59 @@ def pad_camera_extrinsics_4x4(extrinsics):
         padding = padding.unsqueeze(0).repeat(extrinsics.shape[0], 1, 1)
     extrinsics = torch.cat([extrinsics, padding], dim=-2)
     return extrinsics
+
+def calc_orig_cam_params(D_crop,fov_crop, W_orig, H_orig, crop_bbox):
+    """
+    Calculate the original camera distance and FoV based on the cropped image.
+
+    Parameters:
+    - D_crop: Camera distance for the cropped image (float).
+    - W_orig: Width of the original image (int or float).
+    - H_orig: Height of the original image (int or float).
+    - crop_bbox: Bounding box of the cropped area in the cropped image (x_min, y_min, x_max, y_max).
+    - fov_crop: Field of view of the cropped image (in degrees, float).
+
+    Returns:
+    - D_orig: Camera distance for the original image (float).
+    - fov_orig: Field of view for the original image (in degrees, float).
+    """
+    # Extract bbox dimensions from the cropped image
+    x_min, y_min, x_max, y_max = crop_bbox
+    bbox_width = x_max - x_min
+    bbox_height = y_max - y_min
+
+    # Calculate scaling factors for width and height
+    scale_w = W_orig / bbox_width
+    scale_h = H_orig / bbox_height
+
+    # Convert fov_crop from degrees to radians
+    fov_crop_rad = math.radians(fov_crop)
+
+    # Compute fov_orig based on the dominant scaling factor
+    fov_orig_rad = 2 * math.atan(math.tan(fov_crop_rad / 2) * min(scale_w, scale_h))
+    fov_orig = math.degrees(fov_orig_rad)
+
+    # Compute D_orig using the relationship between fov_orig and fov_crop
+    D_orig = D_crop * (math.tan(fov_orig_rad / 2) / math.tan(fov_crop_rad / 2))
+
+    return D_orig, fov_orig
+
+def adjust_principal_point(crop_bbox, w, h):
+    """
+    Adjust the principal point (cx, cy) in normalized coordinates based on the crop box.
+
+    Parameters:
+    - crop_bbox: List of 4 values [x_min, y_min, x_max, y_max] representing the crop box in the original image.
+    - w: Width of the original image (float or int).
+    - h: Height of the original image (float or int).
+
+    Returns:
+    - cx: Adjusted x-coordinate of the principal point (normalized, float).
+    - cy: Adjusted y-coordinate of the principal point (normalized, float).
+    """
+    # Calculate the normalized crop box center
+    cx_crop = (crop_bbox[0] + crop_bbox[2]) / 2 / w  # Normalize x-center
+    cy_crop = (crop_bbox[1] + crop_bbox[3]) / 2 / h  # Normalize y-center
+
+    # Return adjusted principal point
+    return cx_crop, cy_crop

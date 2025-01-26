@@ -262,7 +262,8 @@ class HOI_Sync:
         
         projections = self.data["obj_cam"]["projection"]
         c2ws = self.data["obj_cam"]["extrinsics"]
-        c2ws = torch.cat([c2ws, torch.tensor([[0,0,0,1]], device=c2ws.device)], dim=0)
+        if c2ws.shape[0] == 3:
+            c2ws = torch.cat([c2ws, torch.tensor([[0,0,0,1]], device=c2ws.device)], dim=0)
         
         img = self.renderer(verts, tri, color, projections, c2ws, resolution)
         
@@ -274,7 +275,9 @@ class HOI_Sync:
         
         projections = self.data["obj_cam"]["projection"]
         c2ws = self.data["obj_cam"]["extrinsics"]
-        c2ws = torch.cat([c2ws, torch.tensor([[0,0,0,1]], device=c2ws.device)], dim=0)
+        
+        if c2ws.shape[0] == 3:
+            c2ws = torch.cat([c2ws, torch.tensor([[0,0,0,1]], device=c2ws.device)], dim=0)
         
         img = self.renderer(hand_verts, self.hand_faces.squeeze().int(), color_hand, projections, c2ws, self.data["resolution"])
         return img
@@ -397,8 +400,8 @@ class HOI_Sync:
         c2ws_r_orig, c2ws_t_orig, c2ws_s_orig = geom_utils.matrix_to_axis_angle_t(c2ws)
         
         
-        c2ws = self.find_c2ws_init(verts, tri, color_obj, projections, resolution, gt_obj_mask)
-        c2ws_r_orig, c2ws_t_orig, c2ws_s_orig = geom_utils.matrix_to_axis_angle_t(c2ws)
+        # c2ws = self.find_c2ws_init(verts, tri, color_obj, projections, resolution, gt_obj_mask)
+        # c2ws_r_orig, c2ws_t_orig, c2ws_s_orig = geom_utils.matrix_to_axis_angle_t(c2ws)
             
         for i in range(self.cfg['obj_iteration']):
             projections = projections_origin + projections_residual * projections_mask
@@ -412,14 +415,15 @@ class HOI_Sync:
             if i==0:
                 mask_init = mask_opt.clone()
                 
-            if not torch.any(mask_opt>0):
-                return False
+            # if not torch.any(mask_opt>0):
+            #     return False
             
             iou_loss = loss_func(mask_opt, gt_obj_mask)
             
             if iou_loss > 0.9:
                 sinkhorn_loss = compute_sinkhorn_loss(mask_opt.contiguous(), gt_obj_mask.contiguous())
-                loss =10 * sinkhorn_loss +iou_loss
+                reg_loss = torch.abs(mask_opt.sum() - gt_obj_mask.sum())
+                loss = sinkhorn_loss +iou_loss + 10 * reg_loss
             else:
                 sinkhorn_loss = 0
                 loss = iou_loss
@@ -907,7 +911,9 @@ class HOI_Sync:
         
         projections = self.data["obj_cam"]["projection"]
         c2ws = self.data["obj_cam"]["extrinsics"]
-        c2ws = torch.cat([c2ws, torch.tensor([[0,0,0,1]], device=c2ws.device)], dim=0)
+        
+        if c2ws.shape[0] == 3:
+            c2ws = torch.cat([c2ws, torch.tensor([[0,0,0,1]], device=c2ws.device)], dim=0)
         hand_depth, hand_rast = self.depth_peel(hand_verts_objcam, self.hand_faces.squeeze().int(), projections, c2ws, self.data["resolution"])
         
         hoi_mask = self.data["hamer_hand_mask"].bool() & self.data["inpaint_mask"]

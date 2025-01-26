@@ -300,7 +300,7 @@ def remove_mask_elements_by_depth(mask, depth_map):
     return mask
 
 def filter_by_depth_kmeans(mask, depth_map, side, n_clusters=3):
-    if (mask > 0).any() == False:
+    if np.count_nonzero(mask > 0) < n_clusters: 
         return None
     
     masked_depth = depth_map[mask > 0].reshape(-1, 1)  # Only consider depth values within the mask region
