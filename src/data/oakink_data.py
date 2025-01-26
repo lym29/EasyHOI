@@ -74,7 +74,7 @@ def parse_seq_id(seq_id):
     else:
         return None
 
-def sample_oakink(root_dir,output_csv,img_per_seq=1):
+def sample_images(root_dir,output_csv,img_per_seq=1):
     with open(output_csv, 'w', newline='') as csvfile:
         csvwriter = csv.writer(csvfile)
         csvwriter.writerow(['img_id', 'obj_id', 'intent_id', 'subj_id', 'img_path'])  # Header of CSV
@@ -160,11 +160,11 @@ def get_gt(data_cfg):
         img_id = row["img_id"]
         obj_id = row["obj_id"]
         
-        if os.path.exists(os.path.join(data_cfg.base_dir, "gt_hoi", f"{img_id}_hand.ply")):
-            continue
+        # if os.path.exists(os.path.join(data_cfg.base_dir, "gt_hoi", f"{img_id}_hand.ply")):
+        #     continue
         
         hand_path = get_hand_path(obj_id, row["img_path"], 
-                                              oakink_shape_dir=os.path.join(data_cfg.orig_path, "shape"))
+                                oakink_shape_dir=os.path.join(data_cfg.orig_path, "shape"))
         if hand_path is None:
             print(hand_path)
             continue
@@ -185,9 +185,13 @@ def get_gt(data_cfg):
         hand_mesh.vertices = hand_mesh.vertices + to_np(center_joint)
         hand_mesh.export(os.path.join(data_cfg.base_dir, "gt_hoi", f"{img_id}_hand.ply"))
         
-        obj_path = get_obj_path(obj_id, 
-                                            oakink_shape_dir=os.path.join(data_cfg.orig_path, "shape"), 
-                                            )
+        hand_joints = to_np(mano_output.joints.squeeze()) + hand_tsl[None, :]
+        hand_joints = trimesh.transform_points(hand_joints, to_np(wTh))
+        hand_joints = hand_joints + to_np(center_joint)
+        np.save(os.path.join(data_cfg.base_dir, "gt_hoi", f"{img_id}_hand_joints.npy"),
+                hand_joints)
+        
+        obj_path = get_obj_path(obj_id,oakink_shape_dir=os.path.join(data_cfg.orig_path, "shape"))
         obj_trimesh = trimesh.load(obj_path, process=False, force="mesh", skip_materials=True)
         bbox_center = (obj_trimesh.vertices.min(0) + obj_trimesh.vertices.max(0)) / 2
         obj_trimesh.vertices = obj_trimesh.vertices - bbox_center 
@@ -201,7 +205,7 @@ if __name__ == '__main__':
     output_csv = "/storage/group/4dvlab/yumeng/OakInk_easyhoi/split/test.csv"
     
     if not os.path.exists(output_csv):
-        sample_oakink(img_dir, output_csv)
+        sample_images(img_dir, output_csv)
         
     data_dir = "/storage/group/4dvlab/yumeng/OakInk_easyhoi"
     split_file = osp.join(data_dir, 'split/test.csv')
