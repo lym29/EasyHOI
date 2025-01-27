@@ -160,8 +160,8 @@ def get_gt(data_cfg):
         img_id = row["img_id"]
         obj_id = row["obj_id"]
         
-        # if os.path.exists(os.path.join(data_cfg.base_dir, "gt_hoi", f"{img_id}_hand.ply")):
-        #     continue
+        if os.path.exists(os.path.join(data_cfg.base_dir, "gt_hoi", f"{img_id}_hand.ply")):
+            continue
         
         hand_path = get_hand_path(obj_id, row["img_path"], 
                                 oakink_shape_dir=os.path.join(data_cfg.orig_path, "shape"))
