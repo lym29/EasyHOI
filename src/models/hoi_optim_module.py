@@ -146,14 +146,14 @@ class HOI_Sync:
         
     def get_data(self, data_item, **kwarg):
         self.data = data_item
-        self.mano_input = data_item["mano_params"]
+        self.mano_params = data_item["mano_params"]
         
         self.hand_faces = self.mano_layer.get_mano_closed_faces().to(self.device)
         if not self.data["is_right"]:
             self.hand_faces = self.hand_faces[:,[0,2,1]] # faces for left hand
         
-        fullpose = torch.cat([self.mano_input["global_orient"], self.mano_input["hand_pose"]], dim=1)
-        self.mano_input['fullpose'] = matrix_to_axis_angle(fullpose).reshape(-1, 16*3) #[B, 16* 3]
+        fullpose = torch.cat([self.mano_params["global_orient"], self.mano_params["hand_pose"]], dim=1)
+        self.mano_params['fullpose'] = matrix_to_axis_angle(fullpose).reshape(-1, 16*3) #[B, 16* 3]
         
         
     def log(self, value_dict, step, log_dir="./logs/optim", tag="optim"):
@@ -167,7 +167,7 @@ class HOI_Sync:
         self.progress_bar.update(step)
     
     def get_mano_output(self):
-        mano_params = self.mano_input
+        mano_params = self.mano_params
         fullpose = mano_params['fullpose']
         betas = mano_params['betas']
         mano_output: MANOOutput = self.mano_layer(fullpose, betas)
@@ -755,8 +755,8 @@ class HOI_Sync:
     def run_handpose_refine(self):  
         """ Fix object pose, optimize hand pose"""
         # init param
-        fullpose:torch.Tensor = self.mano_input['fullpose'].detach().clone()
-        betas:torch.Tensor = self.mano_input['betas'].clone()
+        fullpose:torch.Tensor = self.mano_params['fullpose'].detach().clone()
+        betas:torch.Tensor = self.mano_params['betas'].clone()
         hand_layer = ManoLayer(use_pca=True, ncomps=10).to(self.device)
         
         pca_pose = self.optimize_pca(fullpose, betas, hand_layer)
@@ -797,8 +797,8 @@ class HOI_Sync:
                 best_fullpose = fullpose_new.detach().clone()
                 best_global_param = self.global_params['hand'].detach().clone()
 
-        self.mano_input['fullpose'] = best_fullpose.detach()
-        self.mano_input['betas'] = betas.detach()
+        self.mano_params['fullpose'] = best_fullpose.detach()
+        self.mano_params['betas'] = betas.detach()
         self.global_params['hand'] = best_global_param
         
         name = self.data['name']
@@ -814,8 +814,8 @@ class HOI_Sync:
     def run_handpose_global(self):  
         """ Fix object pose, optimize hand pose"""
         # init param
-        fullpose:torch.Tensor = self.mano_input['fullpose'].clone()
-        betas:torch.Tensor = self.mano_input['betas'].clone()
+        fullpose:torch.Tensor = self.mano_params['fullpose'].clone()
+        betas:torch.Tensor = self.mano_params['betas'].clone()
         
         orient_res = torch.nn.Parameter(torch.zeros([1,3], device=self.device, dtype=fullpose.dtype))
         orient_res.requires_grad_()
@@ -869,9 +869,9 @@ class HOI_Sync:
                 if succ == False:
                     use_3d_loss = True
         
-        self.mano_input['fullpose'] = best_fullpose
+        self.mano_params['fullpose'] = best_fullpose
         self.global_params['hand'] = best_global_params
-        self.mano_input['betas'] = betas.detach()
+        self.mano_params['betas'] = betas.detach()
         name = self.data['name']
         
         
@@ -1217,7 +1217,7 @@ class HOI_Sync:
                                    faces=self.data["object_faces"].squeeze().cpu(),
                                    vertex_colors=self.data["object_colors"])
         
-        mano_params = self.mano_input
+        mano_params = self.mano_params
         fullpose = mano_params['fullpose']
         
         transl = self.global_params['hand'][1:] / self.global_params['hand'][0]
@@ -1269,7 +1269,7 @@ class HOI_Sync:
                                    faces=self.data["object_faces"].squeeze().cpu(),
                                    vertex_colors=self.data["object_colors"])
         
-        mano_params = self.mano_input
+        mano_params = self.mano_params
         fullpose = mano_params['fullpose']
         
         transl = self.global_params['hand'][1:] / self.global_params['hand'][0]
@@ -1308,7 +1308,7 @@ class HOI_Sync:
         if not self.data["is_right"]:
             objFaces = objFaces[:,[0,2,1]] # faces for left hand
         
-        mano_params = self.mano_input
+        mano_params = self.mano_params
         fullpose = mano_params['fullpose']
         betas = mano_params['betas']
         rotation_center = self.mano_layer.get_rotation_center(betas)

@@ -131,8 +131,17 @@ class icp_ts():
         self.mesh_source.vertices = self.mesh_source.vertices * self.scale + self.trans
         return self.mesh_source
 
+def mppe(prd, gt):
+    ''' prd: (NP, 3), gt (NP, 3) '''
+    if isinstance(prd, np.ndarray):
+        prd = torch.from_numpy(prd).float()
+    if isinstance(gt, np.ndarray):
+        gt = torch.from_numpy(gt).float()
 
-def metric(pred_obj_mesh, gt_obj_mesh, use_icp=True):
+    mppe = torch.mean(torch.norm(prd - gt, p=2, dim=1)).item()
+    return mppe
+
+def obj_metric(pred_obj_mesh, gt_obj_mesh, use_icp=True):
     # registration
     if use_icp:
         icp_solver = icp_ts(pred_obj_mesh, gt_obj_mesh)
@@ -166,9 +175,12 @@ def metric(pred_obj_mesh, gt_obj_mesh, use_icp=True):
     fscore_obj_10 = 2 * precision_1 * precision_2 / (precision_1 + precision_2 + 1e-7)
     
     return chamfer_obj, fscore_obj_5, fscore_obj_10
-        
-def get_easyhoi_result(cfg, data_cfg):
-    eval_dir = os.path.join(cfg.out_dir, "eval")
+
+def get_hamer_result(cfg, data_cfg):
+    get_easyhoi_result(cfg, data_cfg, typename="eval_before_camsetup")
+    
+def get_easyhoi_result(cfg, data_cfg, typename = "eval"):
+    eval_dir = os.path.join(cfg.out_dir, typename)
     split_path = os.path.join(data_cfg.base_dir, "split", f"{data_cfg.split}.csv")
     df = pd.read_csv(split_path)
     df['img_id'] = df['img_id'].astype(str)
@@ -178,9 +190,6 @@ def get_easyhoi_result(cfg, data_cfg):
     
     for index, row in tqdm(df.iterrows()):
         img_id = row["img_id"]
-        if os.path.exists(os.path.join(cfg.out_dir, "eval_mesh", f"{img_id}_hand.ply")):
-            continue
-        
         if not os.path.exists(os.path.join(eval_dir, f"{img_id}.pkl")):
             continue
         data = torch.load(os.path.join(eval_dir, f"{img_id}.pkl"))
@@ -196,6 +205,9 @@ def get_easyhoi_result(cfg, data_cfg):
         hand_mesh = trimesh.Trimesh(to_np(mano_output.verts.squeeze()), 
                                     mano_layer.get_mano_closed_faces())
         hand_mesh.export(os.path.join(cfg.out_dir, "eval_mesh", f"{img_id}_hand.ply"))
+        hand_joints = to_np(mano_output.joints.squeeze())
+        np.save(os.path.join(cfg.out_dir, "eval_mesh", f"{img_id}_hand_joints.npy"),
+                hand_joints)
         
         obj_mesh.apply_transform(to_np(hTo[0]))
         obj_mesh.export(os.path.join(cfg.out_dir, "eval_mesh", f"{img_id}_obj.ply"))
@@ -203,6 +215,7 @@ def get_easyhoi_result(cfg, data_cfg):
 def evaluate(cfg, data_cfg):
     gt_path = os.path.join(data_cfg.base_dir, "gt_hoi")
     pred_path = os.path.join(cfg.out_dir, "eval_mesh")
+    log_path = os.path.join(cfg.log_dir, "eval_result.txt")
     log_path = os.path.join(cfg.log_dir, "eval_result.txt")
     pred_name_list = []
     for f in os.listdir(pred_path):
@@ -219,6 +232,8 @@ def evaluate(cfg, data_cfg):
     chamfer_results = []
     fscore_5_results = []
     fscore_10_results = []
+    hand_mpvpe_results = []
+    hand_mpjpe_results = []
 
     # Open the file once before the loop
     with open(log_path, "w") as f:
@@ -226,8 +241,15 @@ def evaluate(cfg, data_cfg):
         for img_name in pred_name_list:
             pred_obj = trimesh.load(os.path.join(pred_path, f"{img_name}_obj.ply"))
             gt_obj = trimesh.load(os.path.join(gt_path, f"{img_name}_obj.ply"))
+            pred_hand_mesh = trimesh.load(os.path.join(pred_path, f"{img_name}_hand.ply"))
+            gt_hand_mesh = trimesh.load(os.path.join(gt_path, f"{img_name}_hand.ply"))
+            pred_hand_joints = np.load(os.path.join(pred_path, f"{img_name}_hand_joints.npy"))
+            gt_hand_joints = np.load(os.path.join(gt_path, f"{img_name}_hand_joints.npy"))
             
-            chamfer, fscore_5, fscore_10 = metric(pred_obj, gt_obj)
+            
+            chamfer, fscore_5, fscore_10 = obj_metric(pred_obj, gt_obj)
+            hand_mpvpe = mppe(pred_hand_mesh.vertices, gt_hand_mesh.vertices)
+            hand_mpjpe = mppe(pred_hand_joints, gt_hand_joints)
             
             if fscore_5 == 0:
                 continue
@@ -236,20 +258,26 @@ def evaluate(cfg, data_cfg):
             chamfer_results.append(chamfer)
             fscore_5_results.append(fscore_5)
             fscore_10_results.append(fscore_10)
+            hand_mpvpe_results.append(hand_mpvpe)
+            hand_mpjpe_results.append(hand_mpjpe)
+            
             
             # Write each result to the file immediately
             f.write(f"Img:{img_name}, Chamfer: {chamfer}, F-score (5mm): {fscore_5}, F-score (10mm): {fscore_10}\n")
+            f.write(f"hand mpvpe:{hand_mpvpe}, hand mpjpe:{hand_mpjpe}\n")
         
-        # Compute and write mean and median of the results to the file
+        # Compute and write results to the file
         f.write("\nOverall Results:\n")
-        f.write(f"Mean Chamfer: {np.mean(chamfer_results)}, Median Chamfer: {np.median(chamfer_results)}\n")
-        f.write(f"Mean F-score (5mm): {np.mean(fscore_5_results)}, Median F-score (5mm): {np.median(fscore_5_results)}\n")
-        f.write(f"Mean F-score (10mm): {np.mean(fscore_10_results)}, Median F-score (10mm): {np.median(fscore_10_results)}\n")
+        f.write(f"Chamfer: Mean: {np.mean(chamfer_results)},Std: {np.std(chamfer_results)}, Median: {np.median(chamfer_results)}\n")
+        f.write(f"F-score (5mm): Mean: {np.mean(fscore_5_results)},Std: {np.std(fscore_5_results)}, Median: {np.median(fscore_5_results)}\n")
+        f.write(f"F-score (10mm): Mean: {np.mean(fscore_10_results)},Std: {np.std(fscore_10_results)}, Median: {np.median(fscore_10_results)}\n")
+        f.write(f"Hand MPVPE: Mean: {np.mean(hand_mpvpe_results)},Std: {np.std(hand_mpvpe_results)}, Median: {np.median(hand_mpvpe_results)}\n")
+        f.write(f"Hand MPJPE: Mean: {np.mean(hand_mpjpe_results)},Std: {np.std(hand_mpjpe_results)}, Median: {np.median(hand_mpjpe_results)}\n")
         
     
         
 
-@hydra.main(version_base=None, config_path="./configs", config_name="optim_oakink")
+@hydra.main(version_base=None, config_path="./configs", config_name="eval_oakink_hamer")
 def main(cfg : DictConfig) -> None:
     config_name = HydraConfig.get().job.config_name
     print(config_name)
@@ -264,7 +292,8 @@ def main(cfg : DictConfig) -> None:
     
     if dataset_name == "oakink":
         oakink_data.get_gt(data_cfg)
-        get_easyhoi_result(cfg, data_cfg)
+        # get_easyhoi_result(cfg, data_cfg)
+        get_hamer_result(cfg, data_cfg)
         evaluate(cfg, data_cfg)
 
 if __name__ == "__main__":
