@@ -15,13 +15,13 @@ import re
 import pandas as pd
 import json
 import glob
-from src.data import oakink_data
+from src.data import oakink_data, ho3d_data
 from manotorch.manolayer import ManoLayer, MANOOutput
 import torch
 import numpy as np
 from scipy.spatial import cKDTree as KDTree
 from tqdm import tqdm
-from src.utils import to_np
+from src.utils import to_np, get_data_from_config
 
 def filter_split_file(data_cfg):
     split_path = os.path.join(data_cfg.base_dir, "split", f"{data_cfg.split}.csv")
@@ -179,8 +179,9 @@ def obj_metric(pred_obj_mesh, gt_obj_mesh, use_icp=True):
 def get_hamer_result(cfg, data_cfg):
     get_easyhoi_result(cfg, data_cfg, typename="eval_before_camsetup")
     
-def get_easyhoi_result(cfg, data_cfg, typename = "eval"):
+def get_easyhoi_result(cfg, data_cfg, data_module, typename = "eval"):
     eval_dir = os.path.join(cfg.out_dir, typename)
+    print(eval_dir)
     split_path = os.path.join(data_cfg.base_dir, "split", f"{data_cfg.split}.csv")
     df = pd.read_csv(split_path)
     df['img_id'] = df['img_id'].astype(str)
@@ -189,7 +190,7 @@ def get_easyhoi_result(cfg, data_cfg, typename = "eval"):
     mano_layer = ManoLayer(side="right").to(device)
     
     for index, row in tqdm(df.iterrows()):
-        img_id = row["img_id"]
+        img_id = data_module.get_img_id(row)
         if not os.path.exists(os.path.join(eval_dir, f"{img_id}.pkl")):
             continue
         data = torch.load(os.path.join(eval_dir, f"{img_id}.pkl"))
@@ -277,11 +278,9 @@ def evaluate(cfg, data_cfg):
     
         
 
-@hydra.main(version_base=None, config_path="./configs", config_name="eval_oakink_hamer")
+@hydra.main(version_base=None, config_path="./configs", config_name="eval_oakink")
 def main(cfg : DictConfig) -> None:
-    config_name = HydraConfig.get().job.config_name
-    print(config_name)
-    dataset_name = config_name.replace("optim_", "")
+    dataset_name = cfg['data']['name']
     print(dataset_name)
     
     data_cfg = OmegaConf.create(cfg['data'])
@@ -292,9 +291,14 @@ def main(cfg : DictConfig) -> None:
     
     if dataset_name == "oakink":
         oakink_data.get_gt(data_cfg)
-        # get_easyhoi_result(cfg, data_cfg)
-        get_hamer_result(cfg, data_cfg)
+        get_easyhoi_result(cfg, data_cfg, oakink_data, typename="eval_final")
+        # get_hamer_result(cfg, data_cfg)
         evaluate(cfg, data_cfg)
+    elif dataset_name == "ho3d":
+        ho3d_data.get_gt(data_cfg)
+        get_easyhoi_result(cfg, data_cfg, ho3d_data, typename="eval_final")
+        evaluate(cfg, data_cfg)
+        
 
 if __name__ == "__main__":
     main()

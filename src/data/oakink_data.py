@@ -199,7 +199,9 @@ def get_gt(data_cfg):
         obj_trimesh.vertices = obj_trimesh.vertices + to_np(center_joint)
         obj_trimesh.export(os.path.join(data_cfg.base_dir, "gt_hoi", f"{img_id}_obj.ply"))
                         
-                        
+def get_img_id(row_data):
+    return row_data['img_id']
+        
 if __name__ == '__main__':
     img_dir = "/inspurfs/group/mayuexin/datasets/OakInk/image/stream_release_v2/"
     output_csv = "/storage/group/4dvlab/yumeng/OakInk_easyhoi/split/test.csv"

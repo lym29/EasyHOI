@@ -93,7 +93,6 @@ def main(args):
     # Create model
     tokenizer = AutoTokenizer.from_pretrained(
         args.version,
-        cache_dir = None,
         model_max_length=args.model_max_length,
         padding_side="right",
         use_fast=False
@@ -137,15 +136,6 @@ def main(args):
     model = LISAForCausalLM.from_pretrained(
         args.version, low_cpu_mem_usage=True, vision_tower=args.vision_tower, seg_token_idx=args.seg_token_idx, **kwargs
     )
-
-    # model = LISAForCausalLM.from_pretrained(
-    #     pretrained_model_name_or_path=cache_dir, 
-    #     low_cpu_mem_usage=True, 
-    #     vision_tower=args.vision_tower, 
-    #     seg_token_idx=args.seg_token_idx, 
-    #     local_files_only=True,
-    #     **kwargs
-    # )
 
     model.config.eos_token_id = tokenizer.eos_token_id
     model.config.bos_token_id = tokenizer.bos_token_id
