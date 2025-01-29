@@ -723,15 +723,16 @@ class HOI_Sync:
         pred_hand_mask = img[...,0]
         
         if not torch.any(pred_hand_mask>0):
-            loss_2d = 0
             iou = torch.Tensor([1.0])
+            use_3d_loss = True
         else:
             iou = soft_iou_loss(pred_hand_mask, gt_hand_mask)
-            if iou.item() >= 0.99:
-                sinkhorn_loss = compute_sinkhorn_loss(pred_hand_mask.contiguous(), gt_hand_mask.contiguous())
-                loss_2d = sinkhorn_loss
-            else:
-                loss_2d = 10 * iou 
+            
+        if iou.item() >= 0.9:
+            sinkhorn_loss = compute_sinkhorn_loss(pred_hand_mask.contiguous(), gt_hand_mask.contiguous())
+            loss_2d = sinkhorn_loss
+        else:
+            loss_2d = 10 * iou 
         
         if use_3d_loss:
             penetr_loss, contact_loss = compute_h2o_sdf_loss(self.data["object_sdf"], 
@@ -752,7 +753,7 @@ class HOI_Sync:
 
         return loss, pred_hand_mask, info, iou.item()
     
-    def run_handpose_refine(self):  
+    def run_handpose_refine(self, outer_iteration = 10):  
         """ Fix object pose, optimize hand pose"""
         # init param
         fullpose:torch.Tensor = self.mano_params['fullpose'].detach().clone()
@@ -771,7 +772,67 @@ class HOI_Sync:
             {'params': fullpose_residual, 'lr': 1e-2},
             {'params': betas, 'lr': 1e-4},
         ]
-        outer_iteration = 10
+        
+        self.optimizer = optim.Adam(params_group)
+        # self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=200, gamma=0.5) 
+        
+        num_iterations = self.cfg['iteration']
+        _, _, init_hand_mask, _ = self.optim_handpose(pca_pose, pca_pose, betas, hand_layer)
+            
+        best_loss = float('inf')
+        best_fullpose = None
+        best_global_param = None
+        for iteration in range(outer_iteration * num_iterations):
+            self.optimizer.zero_grad()
+            pcapose_new = pca_pose + fullpose_residual * fullpose_mask
+            loss, fullpose_new, pred_hand_mask, pred_obj_mask = self.optim_handpose(pcapose_new, pca_pose, betas, hand_layer)
+                            
+            loss.backward()
+            self.optimizer.step()
+            # self.scheduler.step()
+            self.global_step = iteration
+            
+            if loss.item() < best_loss:
+                best_loss = loss.item()
+                best_fullpose = fullpose_new.detach().clone()
+                best_global_param = self.global_params['hand'].detach().clone()
+
+        self.mano_params['fullpose'] = best_fullpose.detach()
+        self.mano_params['betas'] = betas.detach()
+        self.global_params['hand'] = best_global_param
+        
+        name = self.data['name']
+        
+        # vis for check, can be commented
+        if self.vis_mid_results:
+            pred_hand_mask = pred_hand_mask.cpu()
+            pred_hand_mask = ToPILImage(pred_hand_mask)
+            pred_hand_mask.save(osp.join(self.cfg.out_dir, 
+                                            f"midresult/test_hand_obj_cam/{name}_optim_non_global.png"))
+    
+    def run_handpose_refine_disentangled(self, optim_type = "global", outer_iteration = 10):  
+        """ Fix object pose, optimize hand pose"""
+        # init param
+        fullpose:torch.Tensor = self.mano_params['fullpose'].detach().clone()
+        betas:torch.Tensor = self.mano_params['betas'].clone()
+        hand_layer = ManoLayer(use_pca=True, ncomps=10).to(self.device)
+        
+        pca_pose = self.optimize_pca(fullpose, betas, hand_layer)
+        fullpose_residual = torch.nn.Parameter(torch.zeros_like(pca_pose))
+        fullpose_mask = torch.ones_like(pca_pose)
+        fullpose_mask[:, :3] = 0
+        fullpose_residual.requires_grad_()
+        betas.requires_grad_()
+        
+        if optim_type == "global":
+            params_group = [
+                {'params': self.global_params['hand'], 'lr': 1e-2},
+            ]
+        elif optim_type == "artic":
+            params_group = [
+                {'params': fullpose_residual, 'lr': 1e-2},
+                {'params': betas, 'lr': 1e-4},
+            ]
         
         self.optimizer = optim.Adam(params_group)
         # self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=200, gamma=0.5) 

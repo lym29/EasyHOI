@@ -162,7 +162,8 @@ def calc_orig_cam_params(D_crop,fov_crop, W_orig, H_orig, crop_bbox):
     fov_crop_rad = math.radians(fov_crop)
 
     # Compute fov_orig based on the dominant scaling factor
-    fov_orig_rad = 2 * math.atan(math.tan(fov_crop_rad / 2) * min(scale_w, scale_h))
+    scale = (scale_w + scale_h) / 2
+    fov_orig_rad = 2 * math.atan(math.tan(fov_crop_rad / 2) * scale)
     fov_orig = math.degrees(fov_orig_rad)
 
     # Compute D_orig using the relationship between fov_orig and fov_crop

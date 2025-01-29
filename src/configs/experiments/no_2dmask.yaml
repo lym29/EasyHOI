@@ -11,7 +11,7 @@ weights:
   contact: 5
   penetr: 10
   loss_2d: 0
-  regularize: 0.1
+  regularize: 1
 
 obj_iteration: 1000
 iteration: 100

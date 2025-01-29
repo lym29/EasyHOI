@@ -1,3 +1,4 @@
+name: teaser
 base_dir: ./data
 input_dir: ${base_dir}/images
 hand_mask_dir: ${base_dir}/obj_recon/hand_mask
