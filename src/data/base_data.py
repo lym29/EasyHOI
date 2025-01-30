@@ -204,14 +204,16 @@ class ImgData(BaseData):
             }
         else:
             
-            mask_path = self.hand_mask_dir.format(image_id)
+            hand_mask_path = self.hand_mask_dir.format(image_id)
             obj_mask_path = self.obj_mask_dir.format(image_id)
-            if not (osp.exists(mask_path) and osp.exists(obj_mask_path)): 
+            if not (osp.exists(hand_mask_path) and osp.exists(obj_mask_path)): 
                 return None
             
-            mask = Image.open(mask_path).convert('L')# already processed
-            obj_mask = Image.open(obj_mask_path).convert('L')
-            
+            hand_mask = np.array(Image.open(hand_mask_path).convert('L'))# already processed
+            obj_mask = np.array(Image.open(obj_mask_path).convert('L'))
+            mask = (hand_mask > 0) & ~(obj_mask > 0) # Pixels in hand_mask but not in obj_mask
+            # Convert the boolean array back to an image
+            mask = Image.fromarray(mask.astype(np.uint8) * 255)
             
             box = mask_to_bbox(np.array(obj_mask), rate=3)
             x,y,w,h = box
@@ -228,6 +230,7 @@ class ImgData(BaseData):
             if not osp.exists(inp_file): mask.save(inp_file)
             res = {
                 # for inpainting
+                'image_id': image_id,
                 'inp_file': self.save_hoi.format(image_id),
                 'out_file': self.save_obj.format(image_id),
                 'mask_file': self.save_mask.format(image_id),
