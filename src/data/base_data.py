@@ -209,9 +209,10 @@ class ImgData(BaseData):
             if not (osp.exists(hand_mask_path) and osp.exists(obj_mask_path)): 
                 return None
             
-            hand_mask = np.array(Image.open(hand_mask_path).convert('L'))# already processed
-            obj_mask = np.array(Image.open(obj_mask_path).convert('L'))
-            mask = (hand_mask > 0) & ~(obj_mask > 0) # Pixels in hand_mask but not in obj_mask
+            hand_mask = np.array(Image.open(hand_mask_path).convert('L'))# hand: 0 bg: 1
+            obj_mask = np.array(Image.open(obj_mask_path).convert('L'))# obj: 1 bg: 0
+            mask = (hand_mask > 0) # number to bool
+            mask[obj_mask > 0] = True # In case object pixels fall into the hand mask, remove them from the inpainting region.
             # Convert the boolean array back to an image
             mask = Image.fromarray(mask.astype(np.uint8) * 255)
             
