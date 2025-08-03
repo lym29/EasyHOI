@@ -171,5 +171,7 @@ src/simulation/data
 third_party/LISA/*/*.jpg
 third_party/LISA/*/*.png
 data/*/*
+data_backup/*/*
 preprocess/pretrained
-slurm/
+slurm/log
+slurm_mow/
