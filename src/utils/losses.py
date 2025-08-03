@@ -381,8 +381,9 @@ def compute_obj_contact(
     random_indices = torch.randperm(pts.shape[0])[:num_sample]
     pts = pts[random_indices]
     contact_normals = contact_normals[random_indices]
+    p_id = p_id[random_indices]
     
-    return pts, contact_normals, contact_mask #,verts_id
+    return pts, contact_normals, contact_mask, p_id
 
 
 def compute_hand_contact(
@@ -436,11 +437,19 @@ def compute_hand_contact(
     pts = u * verts[verts_id[:,0]] + v*verts[verts_id[:,1]] + (1-u-v)*verts[verts_id[:,2]]
     contact_normals = u * normals[verts_id[:,0]] + v*normals[verts_id[:,1]] + (1-u-v)*normals[verts_id[:,2]]
     
+    print(pts.shape) #torch.Size([2987, 3])
+    print(p_id.shape) #torch.Size([2987, 2])
+    print(contact_normals.shape) #torch.Size([2987, 3])
+    # exit()
+    ## TODO: Determine the correspondence between contact points using pixel IDs.
+    
     random_indices = torch.randperm(pts.shape[0])[:num_sample]
     pts = pts[random_indices]
     contact_normals = contact_normals[random_indices]
+    p_id = p_id[random_indices]
     
-    return pts, contact_normals, contact_mask #,verts_id
+    
+    return pts, contact_normals, contact_mask , p_id
     
 def compute_depth_loss(
     hand_mask:torch.Tensor, #['H', 'W']
@@ -774,7 +783,8 @@ def occlusion_loss(pred_mask, tgt_mask, obj_mask):
 
 sinkhorn_loss = SamplesLoss('sinkhorn')
 def compute_sinkhorn_loss(pred_mask, gt_mask, max_num = 1000):
-    reg_loss = torch.abs(pred_mask.sum() - gt_mask.sum())
+    assert gt_mask.sum() > 0, "gt mask shouldn't be empty"
+    reg_loss = torch.abs(pred_mask.sum() - gt_mask.sum()) / gt_mask.sum() 
     # print("reg_loss: ", reg_loss.item())
     
     # Convert masks to "point clouds" with weights

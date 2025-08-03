@@ -133,6 +133,59 @@ class HOI_Sync:
         os.makedirs(osp.join(self.cfg.out_dir, "retarget"), exist_ok=True)
         os.makedirs(osp.join(self.cfg.out_dir, "contact"), exist_ok=True)
 
+    def __init_hand__(self):
+        mano_output = self.get_mano_output()
+        hand_verts = mano_output.verts
+        hand_verts[:,:,0] = (2*self.data["is_right"]-1)*hand_verts[:,:,0]
+        
+        global_rot = self.get_hand_global_rot()
+        hand_verts = hand_verts @ global_rot.mT
+        hand_verts = hand_verts.squeeze()
+        
+        hamer_mask = self.data["hamer_hand_mask"]
+        nonzero_idx = torch.nonzero(hamer_mask, as_tuple=False)  # Shape: [N, 2]
+        # Extract 2D bounding box
+        ymin, xmin = nonzero_idx.min(dim=0).values  # Top-left corner
+        ymax, xmax = nonzero_idx.max(dim=0).values  # Bottom-right corner
+        # 2D bounding box as (x_min, y_min, x_max, y_max)
+        bbox_2d = torch.tensor([xmin, ymin, xmax, ymax])
+        
+        # Assume `vertices` is a torch tensor of shape [N, 3] (N vertices in 3D space)
+        min_coords = hand_verts.min(dim=0).values  # [x_min, y_min, z_min]
+        max_coords = hand_verts.max(dim=0).values  # [x_max, y_max, z_max]
+
+        # 3D bounding box as (x_min, y_min, z_min, x_max, y_max, z_max)
+        bbox_3d = torch.cat([min_coords, max_coords])
+        
+        width_2d = bbox_2d[2] - bbox_2d[0]
+        height_2d = bbox_2d[3] - bbox_2d[1]
+        center_2d = (bbox_2d[:2] + bbox_2d[2:]) / 2  # Mean of min and max coords
+        width_3d = bbox_3d[3] - bbox_3d[0]
+        height_3d = bbox_3d[4] - bbox_3d[1]
+        center_3d = (bbox_3d[:3] + bbox_3d[3:]) / 2  # Mean of min and max coords
+        
+        obj_cam = self.data["obj_cam"]
+        H, W = hamer_mask.shape
+        fx, fy = obj_cam["fx"] * W, obj_cam["fy"] * H
+        cx, cy = obj_cam["cx"] * W, obj_cam["cy"] * H 
+        print("2d w,h: ", width_2d, height_2d)
+        print("3d w,h: ", width_3d, height_3d)
+        depth_estimate = obj_cam["cam_dist"]  # Approximate depth (z_min of 3D bbox)
+
+        scale_x = (width_2d * depth_estimate) / (width_3d * fx)
+        scale_y = (height_2d * depth_estimate) / (height_3d * fy)
+
+        scale = (scale_x + scale_y) / 2  # Average scale
+        tx = (center_2d[0] - cx) * depth_estimate / fx  # x translation
+        ty = (center_2d[1] - cy) * depth_estimate / fy  # y translation
+        tz = depth_estimate  # z translation
+        
+        c2ws = self.data["obj_cam"]["extrinsics"]
+        if c2ws.shape[0] == 3:
+            c2ws = torch.cat([c2ws, torch.tensor([[0,0,0,1]], device=c2ws.device)], dim=0)
+        t = torch.FloatTensor([-tx, -ty, -tz, 1]).to(c2ws.device) # using obj_cam coordinate
+        t = c2ws @ t.T
+        self.global_params["hand"] = torch.FloatTensor([scale, t[0], t[1], t[2]]).to(self.device)
     
     def get_params_for(self, option):
         key = option
@@ -146,6 +199,7 @@ class HOI_Sync:
         
     def get_data(self, data_item, **kwarg):
         self.data = data_item
+        print("get_data: \n", self.data["obj_cam"])
         self.mano_params = data_item["mano_params"]
         
         self.hand_faces = self.mano_layer.get_mano_closed_faces().to(self.device)
@@ -204,6 +258,8 @@ class HOI_Sync:
         img = torch.flip(out[0], dims=[0]) # Flip vertically.
         
         self.data["hamer_hand_mask"] = img[...,0].detach()
+        
+        self.__init_hand__()
         
         tgt_mask = self.data["hamer_hand_mask"]
         # Get the indices of non-zero elements
@@ -422,7 +478,7 @@ class HOI_Sync:
             
             if iou_loss > 0.9:
                 sinkhorn_loss = compute_sinkhorn_loss(mask_opt.contiguous(), gt_obj_mask.contiguous())
-                loss = sinkhorn_loss + iou_loss
+                loss = 0.1 * sinkhorn_loss + iou_loss
             else:
                 sinkhorn_loss = 0
                 loss = iou_loss
@@ -432,7 +488,7 @@ class HOI_Sync:
             opt.step()
             
             self.log({
-                "sinkhorn loss": sinkhorn_loss,
+                "sinkhorn loss": 0.1 * sinkhorn_loss,
                 "total loss": loss
                 }, step=i
             )
@@ -455,7 +511,7 @@ class HOI_Sync:
         
         hoi_mask = self.data["hamer_hand_mask"].bool() & self.data["inpaint_mask"]
         front_mask = (hoi_mask & self.data["inpaint_mask"] & (~self.data["obj_mask"])).int()
-        obj_pts_front, obj_contact_normals_front, contact_mask_front = compute_obj_contact(
+        obj_pts_front, obj_contact_normals_front, _, pid_front = compute_obj_contact(
             side='obj_front',
             mask=front_mask,
             verts=verts.squeeze(),
@@ -466,7 +522,7 @@ class HOI_Sync:
         
             
         back_mask = (hoi_mask & self.data["inpaint_mask"] & self.data["hamer_hand_mask"].bool() & (~self.data["hand_mask"])).int()
-        obj_pts_back, obj_contact_normals_back, contact_mask_back = compute_obj_contact(
+        obj_pts_back, obj_contact_normals_back, _, pid_back = compute_obj_contact(
             side='obj_back',
             mask=back_mask,
             verts=verts.squeeze(),
@@ -730,10 +786,12 @@ class HOI_Sync:
             
         if iou.item() >= 0.9:
             sinkhorn_loss = compute_sinkhorn_loss(pred_hand_mask.contiguous(), gt_hand_mask.contiguous())
-            loss_2d = sinkhorn_loss
+            loss_2d = 0.01 * sinkhorn_loss
+            use_3d_loss = False
         else:
-            loss_2d = 10 * iou 
-        
+            loss_2d = iou 
+            use_3d_loss = False
+            
         if use_3d_loss:
             penetr_loss, contact_loss = compute_h2o_sdf_loss(self.data["object_sdf"], 
                                                 hand_verts,
@@ -883,7 +941,7 @@ class HOI_Sync:
         betas.requires_grad_()
         
         params_group = [
-            {'params': self.global_params['hand'], 'lr': 5e-2},
+            {'params': self.global_params['hand'], 'lr': 1e-1},
             # {'params': betas, 'lr': 1e-4},
             {'params': orient_res, 'lr': 1e-5},
         ]
@@ -981,7 +1039,7 @@ class HOI_Sync:
         
         normals = hand_mesh_objcam.vertex_normals.copy()
         normals = torch.Tensor(normals).float().to(self.device)
-        hand_pts_front, hand_normals_front, contact_mask_front = compute_hand_contact(
+        hand_pts_front, hand_normals_front, contact_mask_front, pid_front = compute_hand_contact(
                                                     side='hand_front',
                                                     mask = front_mask,
                                                     verts=hand_verts_objcam.squeeze(),
@@ -992,7 +1050,7 @@ class HOI_Sync:
                                                 )
         
         back_mask = ( hoi_mask & self.data["hamer_hand_mask"].bool() & (~self.data["hand_mask"])).int()
-        hand_pts_back, hand_normals_back, contact_mask_back = compute_hand_contact(
+        hand_pts_back, hand_normals_back, contact_mask_back, pid_back = compute_hand_contact(
                                                     side='hand_back',
                                                     mask = back_mask,
                                                     verts=hand_verts_objcam.squeeze(),
@@ -1172,7 +1230,7 @@ class HOI_Sync:
         src_cam_ext = self.data["hand_cam"]["extrinsics"]
         tgt_cam_ext = self.data["obj_cam"]["extrinsics"]
         cam_rot = tgt_cam_ext[None, :3, :3] @ src_cam_ext[None, :3,:3].mT
-        
+
         return cam_rot @ hamer_rot
         
     

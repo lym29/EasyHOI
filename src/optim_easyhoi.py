@@ -58,10 +58,9 @@ def get_obj_cam(device, w, h, crop_bbox):
     
     ratio = w/h
     
-    obj_cam = {'fx':focal_length, 'fy': focal_length*ratio, 'cx': cx, 'cy': cy}
+    obj_cam = {'fx':focal_length, 'fy': focal_length*ratio, 'cx': cx, 'cy': cy, 'cam_dist':DEFAULT_DIST}
     obj_cam["extrinsics"] = center_looking_at_camera_pose(cam_pose).to(device)
     obj_cam["projection"] = torch.FloatTensor(get_projection(obj_cam, width=w, height=h)).to(device)
-    
     return obj_cam
 
 def get_obj_cam_tripo(device, w, h):
@@ -71,9 +70,8 @@ def get_obj_cam_tripo(device, w, h):
     cam_pose = torch.FloatTensor([DEFAULT_DIST, 0, 0]).cuda()
     
     ratio = w/h
-    print("ratio: ", ratio)
     
-    obj_cam = {'fx':focal_length, 'fy': focal_length*ratio, 'cx': 0.5, 'cy': 0.5}
+    obj_cam = {'fx':focal_length, 'fy': focal_length*ratio, 'cx': 0.5, 'cy': 0.5, 'cam_dist':DEFAULT_DIST}
     obj_cam["extrinsics"] = center_looking_at_camera_pose(cam_pose).to(device)
     obj_cam["projection"] = torch.FloatTensor(get_projection(obj_cam, width=w, height=h)).to(device)
     
@@ -255,7 +253,6 @@ def load_data_single(cfg: DictConfig, file, hand_id, is_tripo = False):
                "scale": torch.FloatTensor([obj_sdf_scale]).cuda(),
                "voxel": torch.FloatTensor(obj_sdf_voxel).cuda()}
     
-    
     ret = {
             "name": img_fn,
             "img_path": img_path,
@@ -352,6 +349,7 @@ def main(cfg : DictConfig) -> None:
             continue
         
         data_item = load_data_single(data_cfg, file, hand_id, is_tripo)
+        
         if data_item is None:
             with open(lock_file, 'w') as f:
                 f.write("Failed to construct a SDF!")
@@ -361,7 +359,6 @@ def main(cfg : DictConfig) -> None:
         
         with open(lock_file, 'w') as f:
             pass  # This creates an empty file
-        
         
         hoi_sync.get_data(data_item)
         
@@ -377,7 +374,7 @@ def main(cfg : DictConfig) -> None:
         print("optim_obj_cam end:", end_time)
         print("optim_obj_cam takes: ", end_time - start_time)
         hoi_sync.export(prefix="init")
-        # hoi_sync.export_for_eval(prefix="init")
+        hoi_sync.export_for_eval(prefix="init")
         
         # Stage 2: contact alignment
         start_time = time.time()
