@@ -169,10 +169,11 @@ We would like to express our gratitude to the authors and contributors of the fo
 ## Citation
 If you find our work useful, please consider citing us using the following BibTeX entry:
 ```
-@article{liu2024easyhoi,
+@inproceedings{liu2025easyhoi,
   title={EasyHOI: Unleashing the Power of Large Models for Reconstructing Hand-Object Interactions in the Wild},
   author={Liu, Yumeng and Long, Xiaoxiao and Yang, Zemin and Liu, Yuan and Habermann, Marc and Theobalt, Christian and Ma, Yuexin and Wang, Wenping},
-  journal={arXiv preprint arXiv:2411.14280},
-  year={2024}
+  booktitle={Proceedings of the Computer Vision and Pattern Recognition Conference},
+  pages={7037--7047},
+  year={2025}
 }
 ```
