@@ -22,9 +22,6 @@ channels:
 
 dependencies:
   - python=3.9
-  - pytorch=1.13.*
-  - pytorch-cuda=11.6
-  - torchvision=0.*
   - lightning=2.*
   - torchmetrics=0.*
   - hydra-core=1.*
