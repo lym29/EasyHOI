@@ -54,7 +54,7 @@ Create the environment for optimization:
 ```
 conda create -n easyhoi python=3.9
 conda activate easyhoi
-conda install -y pytorch=1.13.0 torchvision pytorch-cuda=11.6 -c pytorch -c nvidia
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
 conda install -c fvcore -c iopath -c conda-forge fvcore iopath
 conda env update --file environment.yaml
 ```
