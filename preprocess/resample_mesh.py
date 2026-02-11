@@ -201,7 +201,26 @@ def load_tripo(folder):
             
         mesh.export(os.path.join(folder, model, "full.obj"))
 
-def main(folder, resample=False):
+def load_sam3d(folder):
+    for model in tqdm(os.listdir(folder)):
+        if model.startswith('.'):
+            continue
+        objects_dir = os.path.join(folder, model, "objects")
+        glb_files = glob.glob(os.path.join(objects_dir, '*.glb'))
+        # print(obj_files)
+
+        if len(glb_files) == 0:
+            print(model)
+            continue
+        mesh = trimesh.load(glb_files[0], force='mesh')
+
+        if hasattr(mesh.visual, 'uv'):
+            vertex_colors = mesh.visual.to_color().vertex_colors
+            mesh = trimesh.Trimesh(vertices=mesh.vertices, faces=mesh.faces, vertex_colors=vertex_colors)
+
+        mesh.export(os.path.join(folder, model, "full.obj"))
+
+def main(folder, resample=False, sam3d=False):
     
     # folder = '/storage/group/4dvlab/yumeng/RealDex_easyhoi/obj_recon/results/instantmesh/instant-mesh-large/meshes/'
     for model in tqdm(os.listdir(folder)):
@@ -211,12 +230,11 @@ def main(folder, resample=False):
         out_path =os.path.join(data_dir, 'recon.ply') 
         pc_path =os.path.join(data_dir, 'recon_pc.ply') 
         fixed_path = os.path.join(data_dir, 'fixed.obj') 
-        
+
         orig_mesh_path = os.path.join(data_dir, "full.obj")
-        
         print(orig_mesh_path)
-        
-        
+
+#------continue--------
         if os.path.exists(fixed_path):
             continue
         
@@ -243,20 +261,28 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Segementation.")
     parser.add_argument('--data_dir', type=str, help='Path to the data to be processed')
     parser.add_argument('--resample', action='store_true', help='Resample the point cloud using the depth camera')
-    
+    parser.add_argument('--sam3d', action='store_true', help='Use SAM3D')
+
     args = parser.parse_args()
-    
-    folder = os.path.join(args.data_dir, "obj_recon/results/tripo/meshes/")
-    if os.path.exists(folder):
-        load_tripo(folder)
-        main(folder, False)
-    
-    folder = os.path.join(args.data_dir, "obj_recon/results/instantmesh/instant-mesh-large/meshes/")
-    if args.resample:
-        print("resample mesh using depth camera")
-        main(folder, True)
+
+    folder = os.path.join(args.data_dir, "obj_recon/results/sam3d/meshes/")
+    if args.sam3d:
+        print("----use SAM3D----")
+        load_sam3d(folder)
+        main(folder, False, True)
     else:
-        main(folder, False)
-        
+        folder = os.path.join(args.data_dir, "obj_recon/results/tripo/meshes/")
+        if os.path.exists(folder):
+            load_tripo(folder)
+            main(folder, False)
+
+        folder = os.path.join(args.data_dir, "obj_recon/results/instantmesh/instant-mesh-large/meshes/")
+        if args.resample:
+            print("resample mesh using depth camera")
+            main(folder, True)
+        else:
+            main(folder, False)
+
+
     
     

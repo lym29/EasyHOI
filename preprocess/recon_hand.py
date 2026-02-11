@@ -4,7 +4,7 @@ import os
 import os.path as osp
 import subprocess
 import argparse
-sys.path.append('third_party/hamer')
+sys.path.append('../third_party/hamer')
 from hamer.models import MANO
 if 'PYOPENGL_PLATFORM' not in os.environ:
     os.environ['PYOPENGL_PLATFORM'] = 'egl'

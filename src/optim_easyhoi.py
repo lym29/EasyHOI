@@ -168,8 +168,11 @@ def load_data_single(cfg: DictConfig, file, hand_id, is_tripo = False):
     obj_mesh_path = osp.join(cfg.obj_dir,img_fn, "fixed.obj")
     
     if not os.path.exists(obj_mesh_path):
-        print("obj mesh not exist:", obj_mesh_path)
-        return None
+        print("fixed_obj mesh not exist:", obj_mesh_path)
+        obj_mesh_path = osp.join(cfg.obj_dir,img_fn, "full.obj")
+        if not os.path.exists(obj_mesh_path):
+            return None
+
     obj_mesh = trimesh.load(obj_mesh_path)
     object_colors = obj_mesh.visual.vertex_colors
     
@@ -273,8 +276,9 @@ def load_data_single(cfg: DictConfig, file, hand_id, is_tripo = False):
             "object_sdf": obj_sdf,
             "cam_transl": torch.tensor(hand_info["cam_transl"]).unsqueeze(0).float().cuda(),
             "is_right": hand_info["is_right"],
-            "mesh_path": osp.join(cfg.obj_dir,img_fn, "fixed.obj")
-        }
+            # "mesh_path": osp.join(cfg.obj_dir,img_fn, "fixed.obj")
+            "mesh_path": obj_mesh_path
+    }
     return ret
     
 
@@ -323,6 +327,7 @@ def main(cfg : DictConfig) -> None:
         
         path = osp.join(exp_cfg.out_dir, f"after_{img_fn}.ply")
         lock_file = osp.join(exp_cfg.out_dir, f"after_{img_fn}.lock")
+        #--------continue----------
         if osp.exists(path) or osp.exists(lock_file):
             continue
         
@@ -355,6 +360,7 @@ def main(cfg : DictConfig) -> None:
         if data_item is None:
             with open(lock_file, 'w') as f:
                 f.write("Failed to construct a SDF!")
+                print("Failed to construct a SDF!")
             continue
         
         print(data_item["name"])
