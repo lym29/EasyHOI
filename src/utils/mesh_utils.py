@@ -21,7 +21,8 @@ import numpy as np
 from scipy.spatial.distance import cdist
 import re
 import collections.abc as container_abcs
-from torch._six import string_classes
+#from torch._six import string_classes
+string_classes = str
 int_classes = int
 
 import trimesh
